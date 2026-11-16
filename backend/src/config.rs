@@ -90,15 +90,6 @@ impl Config {
             static_dir,
         })
     }
-
-    /// Fails for combinations that are configured correctly but not built yet, so the server
-    /// never runs unprotected or without its database by accident.
-    pub fn ensure_supported(&self) -> anyhow::Result<()> {
-        if matches!(self.auth, AuthMode::Oidc { .. }) {
-            bail!("CLOCKOPUS_AUTH=oidc is not implemented yet (milestone M5)");
-        }
-        Ok(())
-    }
 }
 
 #[cfg(test)]
@@ -131,7 +122,6 @@ mod tests {
                 data_dir: "/data".into()
             }
         );
-        c.ensure_supported().unwrap();
     }
 
     #[test]
@@ -169,29 +159,25 @@ mod tests {
     }
 
     #[test]
-    fn oidc_refuses_to_start_until_tokens_are_checked() {
-        let c = cfg(&[
-            ("CLOCKOPUS_AUTH", "oidc"),
-            ("CLOCKOPUS_OIDC_ISSUER", "https://auth.example.com"),
-            ("CLOCKOPUS_OIDC_CLIENT_ID", "clockopus"),
-        ])
-        .unwrap();
-        assert!(c.ensure_supported().is_err());
-
+    fn postgres_needs_a_database_url() {
+        assert!(
+            cfg(&[
+                ("CLOCKOPUS_AUTH", "none"),
+                ("CLOCKOPUS_STORAGE", "postgres")
+            ])
+            .is_err()
+        );
         let c = cfg(&[
             ("CLOCKOPUS_AUTH", "none"),
             ("CLOCKOPUS_STORAGE", "postgres"),
             ("DATABASE_URL", "postgres://x"),
         ])
         .unwrap();
-        c.ensure_supported().unwrap();
-        assert!(
-            cfg(&[
-                ("CLOCKOPUS_AUTH", "none"),
-                ("CLOCKOPUS_STORAGE", "postgres")
-            ])
-            .is_err(),
-            "postgres needs DATABASE_URL"
+        assert_eq!(
+            c.storage,
+            Storage::Postgres {
+                database_url: "postgres://x".into()
+            }
         );
     }
 

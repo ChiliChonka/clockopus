@@ -1,0 +1,46 @@
+{
+  "realm": "clockopus-dev",
+  "displayName": "clockopus development only (task dev:keycloak) - users anna/anna, ben/ben; never use elsewhere",
+  "enabled": true,
+  "registrationAllowed": false,
+  "sslRequired": "none",
+  "clients": [
+    {
+      "clientId": "clockopus",
+      "name": "clockopus (local development)",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["http://localhost:8080/*", "http://localhost:4200/*"],
+      "webOrigins": ["http://localhost:8080", "http://localhost:4200"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:8080/*##http://localhost:4200/*"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "anna",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Anna",
+      "lastName": "Example",
+      "email": "anna@example.com",
+      "credentials": [{ "type": "password", "value": "anna", "temporary": false }]
+    },
+    {
+      "username": "ben",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Ben",
+      "lastName": "Example",
+      "email": "ben@example.com",
+      "credentials": [{ "type": "password", "value": "ben", "temporary": false }]
+    }
+  ]
+}

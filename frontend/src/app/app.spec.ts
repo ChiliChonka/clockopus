@@ -2,20 +2,28 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { App } from './app';
+import { AuthService } from './core/auth.service';
 import { Me, SessionService } from './core/session.service';
 
 describe('App', () => {
   const me = signal<Me | null>(null);
   const error = signal<string | null>(null);
   const load = vi.fn().mockResolvedValue(undefined);
+  const auth = { enabled: signal(false), logout: vi.fn() };
 
   beforeEach(async () => {
     me.set(null);
     error.set(null);
     load.mockClear();
+    auth.enabled.set(false);
+    auth.logout.mockClear();
     await TestBed.configureTestingModule({
       imports: [App],
-      providers: [provideRouter([]), { provide: SessionService, useValue: { me, error, load } }],
+      providers: [
+        provideRouter([]),
+        { provide: SessionService, useValue: { me, error, load } },
+        { provide: AuthService, useValue: auth },
+      ],
     }).compileComponents();
   });
 
@@ -55,5 +63,21 @@ describe('App', () => {
       ['⚙', '/settings'],
     ]);
     expect(links[4].getAttribute('aria-label')).toBe('Settings');
+  });
+
+  it('offers sign-out only when sign-in is enabled', async () => {
+    let fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    expect((fixture.nativeElement as HTMLElement).querySelector('.logout')).toBeNull();
+
+    auth.enabled.set(true);
+    fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const button = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+      '.logout',
+    )!;
+    expect(button.textContent!.trim()).toBe('Sign out');
+    button.click();
+    expect(auth.logout).toHaveBeenCalledTimes(1);
   });
 });

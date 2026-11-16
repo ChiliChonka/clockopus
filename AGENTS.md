@@ -14,6 +14,7 @@
 |---|---|
 | `task check` | Formatting, clippy, all tests, frontend build, image build. Must be green before every commit. Starts the PostgreSQL test container (`task db:test`) for the contract tests. |
 | `task db:test` / `task db:test:stop` | PostgreSQL for the contract tests (`CLOCKOPUS_TEST_DATABASE_URL`); without it those tests fail on purpose |
+| `task backend:run:oidc` / `task dev:keycloak:stop` | Try sign-in against a local Keycloak (development realm in `deploy/dev/`) |
 | `task fmt` | Format backend (`cargo fmt`) and frontend (Prettier) |
 | `task backend:run` / `task frontend:run` | Run natively (backend :8080 without sign-in, Angular dev server :4200) |
 | `task up` | Run the image with docker compose on http://localhost:8080 |

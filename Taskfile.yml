@@ -55,6 +55,44 @@ tasks:
     cmds:
       - docker rm -f {{.TEST_DB_CONTAINER}}
 
+  dev:keycloak:
+    desc: Local Keycloak with the development realm (users anna/anna, ben/ben) on http://localhost:8180
+    status:
+      - curl -fsS http://localhost:8180/realms/clockopus-dev/.well-known/openid-configuration >/dev/null
+    cmds:
+      - docker rm -f clockopus-dev-keycloak >/dev/null 2>&1 || true
+      - >-
+        docker run -d --name clockopus-dev-keycloak -p 127.0.0.1:8180:8080
+        -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin
+        -v {{.ROOT_DIR}}/deploy/dev/keycloak-realm.json:/opt/keycloak/data/import/realm.json:ro
+        quay.io/keycloak/keycloak:26.4.5 start-dev --import-realm --hostname=http://localhost:8180
+      - |
+        for i in $(seq 1 90); do
+          curl -fsS http://localhost:8180/realms/clockopus-dev/.well-known/openid-configuration >/dev/null 2>&1 && exit 0
+          sleep 2
+        done
+        echo "Keycloak did not start" >&2; exit 1
+
+  dev:keycloak:stop:
+    desc: Remove the local Keycloak
+    cmds:
+      - docker rm -f clockopus-dev-keycloak
+
+  backend:run:oidc:
+    desc: Backend with sign-in (local Keycloak) and PostgreSQL (test database) on http://localhost:8080
+    dir: backend
+    deps: [dev:keycloak, db:test]
+    env:
+      CLOCKOPUS_AUTH: oidc
+      CLOCKOPUS_OIDC_ISSUER: http://localhost:8180/realms/clockopus-dev
+      CLOCKOPUS_OIDC_CLIENT_ID: clockopus
+      CLOCKOPUS_STORAGE: postgres
+      DATABASE_URL: '{{.TEST_DATABASE_URL}}'
+      CLOCKOPUS_STATIC_DIR: '{{.STATIC_DIR}}'
+      CLOCKOPUS_LISTEN: 127.0.0.1:8080
+    cmds:
+      - cargo run
+
   frontend:install:
     dir: frontend
     sources: [package-lock.json]
