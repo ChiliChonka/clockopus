@@ -8,7 +8,8 @@
 
 ---
 
-> **Status:** early development. The skeleton runs (milestone M1); tasks and the timer come next.
+> **Status:** early development. Tasks, the timer, quick add with `#tags` and the YAML storage
+> work (milestone M2); corrections, the forgotten timer and reports come next.
 > What is planned and in which order: [docs/SPEC.md](docs/SPEC.md), architecture:
 > [docs/adr/0001-architecture.md](docs/adr/0001-architecture.md).
 
