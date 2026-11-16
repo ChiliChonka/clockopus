@@ -97,9 +97,6 @@ impl Config {
         if matches!(self.auth, AuthMode::Oidc { .. }) {
             bail!("CLOCKOPUS_AUTH=oidc is not implemented yet (milestone M5)");
         }
-        if matches!(self.storage, Storage::Postgres { .. }) {
-            bail!("CLOCKOPUS_STORAGE=postgres is not implemented yet (milestone M5)");
-        }
         Ok(())
     }
 }
@@ -172,7 +169,7 @@ mod tests {
     }
 
     #[test]
-    fn unfinished_modes_refuse_to_start() {
+    fn oidc_refuses_to_start_until_tokens_are_checked() {
         let c = cfg(&[
             ("CLOCKOPUS_AUTH", "oidc"),
             ("CLOCKOPUS_OIDC_ISSUER", "https://auth.example.com"),
@@ -187,7 +184,15 @@ mod tests {
             ("DATABASE_URL", "postgres://x"),
         ])
         .unwrap();
-        assert!(c.ensure_supported().is_err());
+        c.ensure_supported().unwrap();
+        assert!(
+            cfg(&[
+                ("CLOCKOPUS_AUTH", "none"),
+                ("CLOCKOPUS_STORAGE", "postgres")
+            ])
+            .is_err(),
+            "postgres needs DATABASE_URL"
+        );
     }
 
     #[test]

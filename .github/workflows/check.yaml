@@ -14,6 +14,20 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # The contract tests run every storage scenario against PostgreSQL as well.
+    services:
+      postgres:
+        image: postgres:17.7-trixie
+        env:
+          POSTGRES_USER: clockopus
+          POSTGRES_PASSWORD: clockopus
+          POSTGRES_DB: clockopus
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U clockopus -d clockopus"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      CLOCKOPUS_TEST_DATABASE_URL: postgres://clockopus:clockopus@127.0.0.1:55432/clockopus
     steps:
       - uses: actions/checkout@v4
       # rust-toolchain.toml pins the version; rustup installs it on first use.
