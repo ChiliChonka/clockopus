@@ -52,8 +52,18 @@ pub fn router(config: Config) -> Router {
             patch(api::update_task).delete(api::delete_task),
         )
         .route("/tasks/{id}/start", post(api::start_task))
+        .route(
+            "/tasks/{id}/entries",
+            get(api::list_task_entries).post(api::add_entry),
+        )
+        .route("/entries", get(api::list_entries))
+        .route(
+            "/entries/{id}",
+            patch(api::update_entry).delete(api::delete_entry),
+        )
         .route("/timer", get(api::get_timer))
         .route("/timer/stop", post(api::stop_timer))
+        .route("/timer/keep-running", post(api::keep_running))
         .route("/tags", get(api::list_tags))
         // Unknown API paths answer 404 instead of the app's index.html.
         .fallback(api_not_found);
@@ -140,8 +150,16 @@ pub fn body<T>(payload: Result<Json<T>, JsonRejection>) -> Result<T, ApiError> {
 
 #[derive(Debug)]
 pub enum ApiError {
-    Invalid { code: &'static str, message: String },
+    Invalid {
+        code: &'static str,
+        message: String,
+    },
     NotFound,
+    Conflict {
+        code: &'static str,
+        message: String,
+        entry_id: uuid::Uuid,
+    },
     Unauthorized,
     Internal,
 }
@@ -163,6 +181,15 @@ impl From<DomainError> for ApiError {
         match e {
             DomainError::Invalid { code, message } => ApiError::Invalid { code, message },
             DomainError::NotFound => ApiError::NotFound,
+            DomainError::Conflict {
+                code,
+                message,
+                entry_id,
+            } => ApiError::Conflict {
+                code,
+                message,
+                entry_id,
+            },
         }
     }
 }
@@ -172,12 +199,29 @@ struct ErrorBody {
     error: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
+    /// The other entry of an overlap (R5).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    entry_id: Option<uuid::Uuid>,
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
+        if let ApiError::Conflict {
+            code,
+            message,
+            entry_id,
+        } = self
+        {
+            let body = ErrorBody {
+                error: code,
+                message: Some(message),
+                entry_id: Some(entry_id),
+            };
+            return (StatusCode::CONFLICT, Json(body)).into_response();
+        }
         let (status, error, message) = match self {
             ApiError::Invalid { code, message } => (StatusCode::BAD_REQUEST, code, Some(message)),
+            ApiError::Conflict { .. } => unreachable!("handled above"),
             ApiError::NotFound => (StatusCode::NOT_FOUND, "not_found", None),
             ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized", None),
             ApiError::Internal => (
@@ -186,7 +230,12 @@ impl IntoResponse for ApiError {
                 Some("Your data could not be read or saved. Details are in the server log.".into()),
             ),
         };
-        (status, Json(ErrorBody { error, message })).into_response()
+        let body = ErrorBody {
+            error,
+            message,
+            entry_id: None,
+        };
+        (status, Json(body)).into_response()
     }
 }
 

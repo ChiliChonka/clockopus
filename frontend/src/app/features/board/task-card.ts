@@ -35,11 +35,14 @@ import { TaskView } from '../../core/wire';
         <span class="muted">today {{ today() }}</span>
       </p>
       <footer>
-        @if (running()) {
-          <button type="button" class="running" (click)="stop.emit()">Stop</button>
-        } @else {
-          <button type="button" class="primary" (click)="start.emit()">Start</button>
-        }
+        <div class="buttons">
+          @if (running()) {
+            <button type="button" class="running" (click)="stop.emit()">Stop</button>
+          } @else {
+            <button type="button" class="primary" (click)="start.emit()">Start</button>
+          }
+          <button type="button" (click)="edit.emit()">Edit</button>
+        </div>
         <details #menu>
           <summary aria-label="More actions">⋯</summary>
           <div class="menu" (click)="menu.open = false">
@@ -106,6 +109,10 @@ import { TaskView } from '../../core/wire';
     .elapsed {
       font-size: 1.25rem;
     }
+    .buttons {
+      display: flex;
+      gap: 6px;
+    }
     footer {
       display: flex;
       justify-content: space-between;
@@ -156,6 +163,7 @@ export class TaskCard {
   readonly pin = output<boolean>();
   readonly done = output<void>();
   readonly remove = output<void>();
+  readonly edit = output<void>();
 
   readonly running = computed(() => this.task().running_since !== null);
 

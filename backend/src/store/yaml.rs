@@ -19,7 +19,12 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use crate::domain::{DomainError, Entry, EntrySource, Settings, Tag, Task, TaskStatus, UserData};
+use jiff::civil::Time;
+
+use crate::domain::{
+    Change, ChangeReason, DEFAULT_FORGOTTEN_AFTER_HOURS, DEFAULT_WORKDAY_END, DomainError, Entry,
+    EntrySource, Settings, Tag, Task, TaskStatus, UserData,
+};
 
 const FORMAT_VERSION: u32 = 1;
 const TASKS_HEADER: &str = "# Written by clockopus. Times are local with UTC offset (RFC 3339).\n# Edit by hand only while clockopus is stopped.\n";
@@ -142,6 +147,20 @@ struct EntryDto {
     source: EntrySource,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     note: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    keep_running: bool,
+    /// Previous values, oldest first (R6).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    history: Vec<ChangeDto>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ChangeDto {
+    changed_at: String,
+    reason: ChangeReason,
+    start: String,
+    end: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -166,6 +185,22 @@ struct SettingsFile {
     version: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     timezone: Option<String>,
+    /// `HH:MM`; missing in files from before M3, then the default applies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    workday_end: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    forgotten_after_hours: Option<u8>,
+}
+
+impl SettingsFile {
+    fn empty() -> Self {
+        Self {
+            version: FORMAT_VERSION,
+            timezone: None,
+            workday_end: None,
+            forgotten_after_hours: None,
+        }
+    }
 }
 
 fn local(ts: Timestamp, tz: &TimeZone) -> String {
@@ -200,6 +235,17 @@ fn to_files(data: &UserData) -> (TasksFile, TagsFile, SettingsFile) {
                     end: e.end.map(|ts| local(ts, &tz)),
                     source: e.source,
                     note: e.note.clone(),
+                    keep_running: e.keep_running,
+                    history: e
+                        .history
+                        .iter()
+                        .map(|c| ChangeDto {
+                            changed_at: local(c.changed_at, &tz),
+                            reason: c.reason,
+                            start: local(c.start, &tz),
+                            end: c.end.map(|ts| local(ts, &tz)),
+                        })
+                        .collect(),
                 })
                 .collect(),
         })
@@ -224,6 +270,8 @@ fn to_files(data: &UserData) -> (TasksFile, TagsFile, SettingsFile) {
         SettingsFile {
             version: FORMAT_VERSION,
             timezone: data.settings.timezone.clone(),
+            workday_end: Some(data.settings.workday_end.strftime("%H:%M").to_string()),
+            forgotten_after_hours: Some(data.settings.forgotten_after_hours),
         },
     )
 }
@@ -265,6 +313,19 @@ fn from_files(
                             end: e.end.as_deref().map(parse_ts).transpose()?,
                             source: e.source,
                             note: e.note,
+                            keep_running: e.keep_running,
+                            history: e
+                                .history
+                                .into_iter()
+                                .map(|c| {
+                                    Ok(Change {
+                                        changed_at: parse_ts(&c.changed_at)?,
+                                        reason: c.reason,
+                                        start: parse_ts(&c.start)?,
+                                        end: c.end.as_deref().map(parse_ts).transpose()?,
+                                    })
+                                })
+                                .collect::<anyhow::Result<_>>()?,
                         })
                     })
                     .collect::<anyhow::Result<_>>()?,
@@ -274,6 +335,15 @@ fn from_files(
     Ok(UserData {
         settings: Settings {
             timezone: settings.timezone,
+            workday_end: match settings.workday_end.as_deref() {
+                Some(t) => t
+                    .parse::<Time>()
+                    .with_context(|| format!("settings.yaml: workday_end `{t}` is not HH:MM"))?,
+                None => DEFAULT_WORKDAY_END,
+            },
+            forgotten_after_hours: settings
+                .forgotten_after_hours
+                .unwrap_or(DEFAULT_FORGOTTEN_AFTER_HOURS),
         },
         tasks,
         tags: tags
@@ -316,13 +386,7 @@ fn load(dir: &Path) -> anyhow::Result<UserData> {
             tags: vec![],
         },
     )?;
-    let settings = read_file(
-        &dir.join("settings.yaml"),
-        SettingsFile {
-            version: FORMAT_VERSION,
-            timezone: None,
-        },
-    )?;
+    let settings = read_file(&dir.join("settings.yaml"), SettingsFile::empty())?;
     from_files(tasks, tags, settings).with_context(|| format!("invalid data in {}", dir.display()))
 }
 
@@ -561,5 +625,52 @@ tasks:
                 "{bad:?}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn history_settings_and_keep_running_survive_a_restart() {
+        use crate::corrections::EntryPatch;
+        use crate::domain::ChangeReason;
+        let dir = tempfile::tempdir().unwrap();
+        let before = {
+            let store = YamlStore::new(dir.path());
+            let (a, _) = sample(&store).await;
+            store
+                .write("local", |d| {
+                    let first = d.tasks.iter().find(|t| t.id == a).unwrap().entries[0].id;
+                    d.update_entry(
+                        first,
+                        EntryPatch {
+                            end: Some(ts("2026-11-17T09:00:00Z")),
+                            note: Some("shorter".into()),
+                            ..Default::default()
+                        },
+                        ChangeReason::Edit,
+                        ts("2026-11-18T08:00:00Z"),
+                    )?;
+                    d.keep_running()?;
+                    d.set_workday(Some(jiff::civil::Time::constant(16, 30, 0, 0)), Some(8))
+                })
+                .await
+                .unwrap();
+            store.read("local", Clone::clone).await.unwrap()
+        };
+        let tasks = fs::read_to_string(dir.path().join("local/tasks.yaml")).unwrap();
+        assert!(tasks.contains("reason: edit"), "{tasks}");
+        assert!(tasks.contains("keep_running: true"), "{tasks}");
+        assert!(tasks.contains("note: shorter"), "{tasks}");
+        let settings = fs::read_to_string(dir.path().join("local/settings.yaml")).unwrap();
+        assert!(
+            settings.contains("workday_end: 16:30") || settings.contains("workday_end: \"16:30\""),
+            "{settings}"
+        );
+        assert!(settings.contains("forgotten_after_hours: 8"), "{settings}");
+
+        let after = YamlStore::new(dir.path())
+            .read("local", Clone::clone)
+            .await
+            .unwrap();
+        assert_eq!(before, after);
+        assert_eq!(after.tasks[0].entries[0].history.len(), 1);
     }
 }

@@ -1,4 +1,31 @@
-import { TagView, TaskView } from '../app/core/wire';
+import { EntryView, Forgotten, TagView, TaskView } from '../app/core/wire';
+
+export function entryView(over: Partial<EntryView> = {}): EntryView {
+  return {
+    id: 'e',
+    task_id: 'a',
+    task_title: 'Fix login bug',
+    tags: [],
+    start: '2026-11-17T08:00:00Z',
+    end: '2026-11-17T09:00:00Z',
+    source: 'timer',
+    note: null,
+    history: [],
+    ...over,
+  };
+}
+
+export function forgotten(over: Partial<Forgotten> = {}): Forgotten {
+  return {
+    task_id: 'a',
+    task_title: 'Fix login bug',
+    entry_id: 'e',
+    start: '2026-11-16T08:12:00Z',
+    running_seconds: 23 * 3600 + 40 * 60,
+    suggested_end: '2026-11-16T16:00:00Z',
+    ...over,
+  };
+}
 
 /** Test data in the backend's wire format; only used by specs. */
 export function taskView(over: Partial<TaskView> = {}): TaskView {

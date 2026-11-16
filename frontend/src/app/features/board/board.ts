@@ -13,6 +13,8 @@ import { formatHm } from '../../core/format';
 import { SessionService } from '../../core/session.service';
 import { TasksService } from '../../core/tasks.service';
 import { TaskView } from '../../core/wire';
+import { EditTaskDialog } from './edit-task-dialog';
+import { ForgottenBanner } from './forgotten-banner';
 import { QuickAddField, QuickAddSubmit } from './quick-add-field';
 import { TaskCard } from './task-card';
 
@@ -21,12 +23,21 @@ const RELOAD_EVERY_MS = 5 * 60 * 1000;
 /** The board (docs/SPEC.md, section 4.1): quick add, frequent tags, filter and task cards. */
 @Component({
   selector: 'app-board',
-  imports: [QuickAddField, TaskCard],
+  imports: [QuickAddField, TaskCard, ForgottenBanner, EditTaskDialog],
   host: {
     '(document:keydown)': 'onShortcut($event)',
     '(document:visibilitychange)': 'onVisible()',
   },
   template: `
+    @if (tasks.forgotten(); as forgotten) {
+      <app-forgotten-banner
+        [forgotten]="forgotten"
+        [now]="now()"
+        (stopAt)="tasks.stopForgotten($event)"
+        (keep)="tasks.keepRunning()"
+      />
+    }
+
     <app-quick-add-field
       [(text)]="text"
       [knownTags]="tasks.tags()"
@@ -79,6 +90,7 @@ const RELOAD_EVERY_MS = 5 * 60 * 1000;
             (pin)="tasks.update(task.id, { pinned: $event })"
             (done)="tasks.update(task.id, { status: 'done' })"
             (remove)="remove(task)"
+            (edit)="editing.set(task)"
           />
         } @empty {
           @if (tasks.loaded()) {
@@ -87,6 +99,8 @@ const RELOAD_EVERY_MS = 5 * 60 * 1000;
         }
       </div>
     }
+
+    <app-edit-task-dialog [task]="editing()" (closed)="editing.set(null)" />
   `,
   styles: `
     :host {
@@ -144,6 +158,8 @@ export class Board {
   readonly text = signal('');
   readonly filter = signal('');
   readonly now = signal(Date.now());
+  /** Task in the edit dialog. */
+  readonly editing = signal<TaskView | null>(null);
 
   readonly visible = computed(() => {
     const words = this.filter().toLowerCase().split(/\s+/).filter(Boolean);

@@ -3,7 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { taskView } from '../../testing/fixtures';
 import { TasksService } from './tasks.service';
-import { TaskView } from './wire';
+import { TaskView, TimerView } from './wire';
 
 describe('TasksService', () => {
   let service: TasksService;
@@ -19,10 +19,15 @@ describe('TasksService', () => {
 
   afterEach(() => http.verify());
 
-  async function flushLoad(tasks: TaskView[] = [], status = 'active') {
+  async function flushLoad(
+    tasks: TaskView[] = [],
+    status = 'active',
+    timer: TimerView = { running: null, forgotten: null },
+  ) {
     await Promise.resolve();
     http.expectOne(`/api/v1/tasks?status=${status}`).flush(tasks);
     http.expectOne('/api/v1/tags').flush([]);
+    http.expectOne('/api/v1/timer').flush(timer);
   }
 
   it('loads tasks and tags and knows the running task', async () => {
@@ -98,5 +103,103 @@ describe('TasksService', () => {
     await flushLoad([], 'all');
     await done;
     expect(service.showDone()).toBe(true);
+  });
+
+  it('knows a forgotten timer from GET /timer', async () => {
+    const done = service.load();
+    // Shape as in backend/src/api.rs forgotten_timer_is_reported_and_corrected_with_history.
+    await flushLoad([], 'active', {
+      running: { task_id: 't', entry_id: 'e', start: '2026-11-10T07:00:00Z' },
+      forgotten: {
+        task_id: 't',
+        task_title: 'Fix login bug',
+        entry_id: 'e',
+        start: '2026-11-10T07:00:00Z',
+        running_seconds: 90000,
+        suggested_end: '2026-11-10T16:00:00Z',
+      },
+    });
+    await done;
+    expect(service.forgotten()?.suggested_end).toBe('2026-11-10T16:00:00Z');
+  });
+
+  it('corrects a forgotten timer and keeps one running', async () => {
+    let done = service.stopForgotten(new Date('2026-11-10T16:00:00Z'));
+    let req = http.expectOne('/api/v1/timer/stop');
+    expect(JSON.stringify(req.request.body)).toBe(
+      '{"end":"2026-11-10T16:00:00.000Z","reason":"forgotten-timer"}',
+    );
+    req.flush({ running: null, forgotten: null });
+    await flushLoad();
+    expect(await done).toBe(true);
+
+    done = service.keepRunning();
+    req = http.expectOne('/api/v1/timer/keep-running');
+    expect(req.request.method).toBe('POST');
+    req.flush({ running: null, forgotten: null });
+    await flushLoad();
+    expect(await done).toBe(true);
+  });
+
+  it('adds, changes and deletes entries and bumps the revision', async () => {
+    const before = service.revision();
+    let done = service.addEntry(
+      't',
+      new Date('2026-11-10T08:00:00Z'),
+      new Date('2026-11-10T09:30:00Z'),
+      'call with Anna',
+    );
+    let req = http.expectOne('/api/v1/tasks/t/entries');
+    expect(JSON.stringify(req.request.body)).toBe(
+      '{"start":"2026-11-10T08:00:00.000Z","end":"2026-11-10T09:30:00.000Z","note":"call with Anna"}',
+    );
+    req.flush({}, { status: 201, statusText: 'Created' });
+    await flushLoad();
+    await done;
+
+    done = service.updateEntry('e', { end: new Date('2026-11-10T10:00:00Z') });
+    req = http.expectOne('/api/v1/entries/e');
+    expect(req.request.method).toBe('PATCH');
+    expect(JSON.stringify(req.request.body)).toBe('{"end":"2026-11-10T10:00:00.000Z"}');
+    req.flush({});
+    await flushLoad();
+    await done;
+
+    done = service.deleteEntry('e');
+    req = http.expectOne('/api/v1/entries/e');
+    expect(req.request.method).toBe('DELETE');
+    req.flush(null, { status: 204, statusText: 'No Content' });
+    await flushLoad();
+    await done;
+    expect(service.revision()).toBe(before + 3);
+  });
+
+  it('shows the overlap message from a 409', async () => {
+    const done = service.addEntry(
+      't',
+      new Date('2026-11-10T09:00:00Z'),
+      new Date('2026-11-10T10:00:00Z'),
+      '',
+    );
+    http.expectOne('/api/v1/tasks/t/entries').flush(
+      {
+        error: 'overlap',
+        message: 'Overlaps with “Write notes” from 2026-11-10 09:00 to 2026-11-10 10:30.',
+        entry_id: 'x',
+      },
+      { status: 409, statusText: 'Conflict' },
+    );
+    await flushLoad();
+    expect(await done).toBe(false);
+    expect(service.error()).toContain('Overlaps with “Write notes”');
+  });
+
+  it('reads entries for a task and a range', async () => {
+    const list = service.entries('t');
+    http.expectOne('/api/v1/tasks/t/entries').flush([]);
+    expect(await list).toEqual([]);
+    const range = service.entriesBetween('2026-11-10', '2026-11-10');
+    http.expectOne('/api/v1/entries?from=2026-11-10&to=2026-11-10').flush([]);
+    expect(await range).toEqual([]);
   });
 });
