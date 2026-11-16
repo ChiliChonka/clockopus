@@ -51,3 +51,12 @@ A command that is missing goes into `Taskfile.yml`, not into ad-hoc scripts.
 | Behaviour, rules, API, configuration | `docs/SPEC.md` |
 | Architecture decision | new ADR in `docs/adr/` (ADRs are append-only; supersede, do not rewrite) |
 | Commands, setup | `README.md`, `Taskfile.yml`, this file |
+| Deployment, chart values | `charts/clockopus/README.md`, `charts/clockopus/tests/test_chart.py` |
+
+## Releases
+
+1. Set the same version in `backend/Cargo.toml`, `charts/clockopus/Chart.yaml` (`version` and
+   `appVersion`) — the release workflow and the chart tests refuse a mismatch.
+2. Merge, then tag `v<version>` on `main` and push the tag. The workflow builds, smoke-tests,
+   pushes and signs image and chart and creates the GitHub release.
+3. Tags and published images are public and stay: a release is decided by the maintainer.

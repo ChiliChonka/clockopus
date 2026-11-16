@@ -1,0 +1,105 @@
+{{- $yaml := eq .Values.storage.type "yaml" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "clockopus.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "clockopus.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  {{- if $yaml }}
+  # One writer for the YAML files on a ReadWriteOnce volume.
+  strategy:
+    type: Recreate
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "clockopus.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "clockopus.labels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: clockopus
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: CLOCKOPUS_LISTEN
+              value: "0.0.0.0:8080"
+            - name: RUST_LOG
+              value: {{ .Values.logLevel | quote }}
+            - name: CLOCKOPUS_AUTH
+              value: {{ .Values.auth.mode | quote }}
+            {{- if eq .Values.auth.mode "oidc" }}
+            - name: CLOCKOPUS_OIDC_ISSUER
+              value: {{ .Values.auth.issuer | quote }}
+            - name: CLOCKOPUS_OIDC_CLIENT_ID
+              value: {{ .Values.auth.clientId | quote }}
+            - name: CLOCKOPUS_OIDC_AUDIENCE
+              value: {{ .Values.auth.audience | default .Values.auth.clientId | quote }}
+            {{- end }}
+            - name: CLOCKOPUS_STORAGE
+              value: {{ .Values.storage.type | quote }}
+            {{- if $yaml }}
+            - name: CLOCKOPUS_DATA_DIR
+              value: /data
+            {{- else }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "clockopus.databaseSecret" . }}
+                  key: {{ .Values.storage.postgres.uriKey }}
+            {{- end }}
+          # Migrations run before the server listens; give the first start time.
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 2
+            failureThreshold: 60
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 20
+          # Not ready while the database is unreachable (no restart for that).
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- if $yaml }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          {{- end }}
+      {{- if $yaml }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "clockopus.name" . }}-data
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,102 @@
+{{- /*
+  CloudNativePG cluster for clockopus, with optional continuous backup (base backup + WAL) via the
+  Barman Cloud plugin. The backup bucket and its credentials Secret do not come from this chart.
+  The migration creates the trusted extension btree_gist as the database owner.
+*/ -}}
+{{- if .Values.cnpg.enabled }}
+{{- $c := .Values.cnpg }}
+{{- $name := include "clockopus.cnpgName" . }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "clockopus.labels" . | nindent 4 }}
+spec:
+  instances: {{ $c.instances }}
+  imageName: {{ required "cnpg.image is required (pinned tag)" $c.image | quote }}
+  enableSuperuserAccess: false
+  storage:
+    size: {{ $c.storageSize }}
+    {{- with $c.storageClass }}
+    storageClass: {{ . | quote }}
+    {{- end }}
+  {{- with $c.resources }}
+  resources:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $c.primaryUpdateMethod }}
+  primaryUpdateMethod: {{ . }}
+  {{- end }}
+  {{- with $c.affinity }}
+  affinity:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $c.parameters }}
+  postgresql:
+    parameters:
+      {{- toYaml . | nindent 6 }}
+  {{- end }}
+  bootstrap:
+    initdb:
+      database: {{ $c.database | quote }}
+      owner: {{ $c.owner | quote }}
+  {{- if $c.backup.enabled }}
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: {{ $name }}-backup-store
+        serverName: {{ $name }}
+  {{- end }}
+{{- if $c.backup.enabled }}
+---
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: {{ $name }}-backup-store
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "clockopus.labels" . | nindent 4 }}
+spec:
+  retentionPolicy: {{ $c.backup.retentionPolicy | quote }}
+  configuration:
+    destinationPath: {{ required "cnpg.backup.destinationPath is required" $c.backup.destinationPath | quote }}
+    endpointURL: {{ required "cnpg.backup.endpointURL is required" $c.backup.endpointURL | quote }}
+    s3Credentials:
+      accessKeyId:
+        name: {{ required "cnpg.backup.credentialsSecret is required" $c.backup.credentialsSecret | quote }}
+        key: {{ $c.backup.accessKeyIdKey | quote }}
+      secretAccessKey:
+        name: {{ $c.backup.credentialsSecret | quote }}
+        key: {{ $c.backup.secretAccessKeyKey | quote }}
+      {{- with $c.backup.regionKey }}
+      region:
+        name: {{ $c.backup.credentialsSecret | quote }}
+        key: {{ . | quote }}
+      {{- end }}
+    wal:
+      compression: gzip
+    data:
+      compression: gzip
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: {{ $name }}-daily
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "clockopus.labels" . | nindent 4 }}
+spec:
+  # Six fields (with seconds), UTC.
+  schedule: {{ $c.backup.schedule | quote }}
+  backupOwnerReference: self
+  immediate: true
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
+  cluster:
+    name: {{ $name }}
+{{- end }}
+{{- end }}

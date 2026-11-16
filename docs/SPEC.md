@@ -281,10 +281,16 @@ in whole seconds. Errors: `{"error": "<stable code>", "message": "<for people>"}
   `backend/` (Rust), `frontend/` (Angular), `charts/clockopus/`, `docs/`; `compose.yaml`,
   `Dockerfile` and `Taskfile.yml` at the root.
 - **Image** `ghcr.io/chilichonka/clockopus:<version>`, multi-stage build, non-root, read-only
-  root filesystem; `linux/amd64` and `linux/arm64`.
-- **Chart** `oci://ghcr.io/chilichonka/charts/clockopus`: Deployment, Service, optional
-  HTTPRoute or Ingress, optional CloudNativePG cluster with backup, optional NetworkPolicy, PVC for
-  the YAML backend. Refuses `storage: yaml` with more than one replica.
+  root filesystem; `linux/amd64` (arm64 when someone needs it: an emulated Rust build takes long,
+  native arm64 runners would be the way).
+- **Chart** `oci://ghcr.io/chilichonka/charts/clockopus` (`charts/clockopus/`, own README):
+  Deployment, Service, optional HTTPRoute, optional CloudNativePG cluster with Barman Cloud backup,
+  optional NetworkPolicy, PVC for the YAML backend (kept on uninstall), PDB from two replicas.
+  Refuses unsafe or broken combinations (`auth none` with a route, `yaml` with more than one
+  replica, `oidc` without issuer/client, `postgres` without database).
+- **Release:** tag `v<version>`; the version in the tag, `Chart.yaml` (`version` and
+  `appVersion`) and `backend/Cargo.toml` must match. Image and chart are pushed to GHCR, signed
+  keyless with cosign, and attached to a GitHub release.
 - **docker compose:** `compose.yaml` with YAML backend and auth `none` (volume `./data`);
   `docker compose -f compose.yaml -f compose.postgres.yaml up` switches to PostgreSQL.
 - **Probes:** `/healthz` (process alive) and `/readyz` (storage answers; `503` while the

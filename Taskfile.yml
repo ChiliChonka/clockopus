@@ -15,7 +15,14 @@ tasks:
     cmds:
       - task: backend:check
       - task: frontend:check
+      - task: chart:check
       - task: image
+
+  chart:check:
+    desc: Lint the Helm chart and run its render tests
+    cmds:
+      - helm lint charts/clockopus -f charts/clockopus/ci/test-values.yaml
+      - python3 charts/clockopus/tests/test_chart.py
 
   fmt:
     desc: Format backend and frontend code
