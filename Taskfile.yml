@@ -4,6 +4,10 @@ version: '3'
 
 vars:
   STATIC_DIR: '{{.ROOT_DIR}}/frontend/dist/clockopus/browser'
+  # Throw-away PostgreSQL for the contract tests (task db:test); test data only.
+  TEST_DB_CONTAINER: clockopus-test-db
+  TEST_DB_PORT: '55432'
+  TEST_DATABASE_URL: postgres://clockopus:clockopus@127.0.0.1:55432/clockopus
 
 tasks:
   check:
@@ -21,10 +25,35 @@ tasks:
 
   backend:check:
     dir: backend
+    deps: [db:test]
+    env:
+      CLOCKOPUS_TEST_DATABASE_URL: '{{.TEST_DATABASE_URL}}'
     cmds:
       - cargo fmt --check
       - cargo clippy --all-targets --locked -- -D warnings
       - cargo test --locked
+
+  db:test:
+    desc: Start the PostgreSQL test database in Docker (127.0.0.1:55432) if it is not running
+    status:
+      - docker exec {{.TEST_DB_CONTAINER}} pg_isready -U clockopus -d clockopus
+    cmds:
+      - docker rm -f {{.TEST_DB_CONTAINER}} >/dev/null 2>&1 || true
+      - >-
+        docker run -d --name {{.TEST_DB_CONTAINER}} -p 127.0.0.1:{{.TEST_DB_PORT}}:5432
+        -e POSTGRES_USER=clockopus -e POSTGRES_PASSWORD=clockopus -e POSTGRES_DB=clockopus
+        --tmpfs /var/lib/postgresql/data postgres:17.7-trixie
+      - |
+        for i in $(seq 1 30); do
+          docker exec {{.TEST_DB_CONTAINER}} pg_isready -U clockopus -d clockopus -h 127.0.0.1 >/dev/null 2>&1 && exit 0
+          sleep 1
+        done
+        echo "test database did not become ready" >&2; exit 1
+
+  db:test:stop:
+    desc: Remove the PostgreSQL test database
+    cmds:
+      - docker rm -f {{.TEST_DB_CONTAINER}}
 
   frontend:install:
     dir: frontend

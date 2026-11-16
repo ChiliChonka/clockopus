@@ -77,6 +77,12 @@ Then open <http://localhost:8080>. Without sign-in the port is only reachable fr
 machine. The container runs as user `1000:1000` so the files in `./data` belong to you; if
 `id -u` says otherwise, start it with `CLOCKOPUS_UID=$(id -u) CLOCKOPUS_GID=$(id -g) docker compose up --build`.
 
+With PostgreSQL instead of YAML files:
+
+```sh
+docker compose -f compose.yaml -f compose.postgres.yaml up --build
+```
+
 ## Development
 
 Requirements: Rust (version pinned in `backend/rust-toolchain.toml`), Node.js 24,
@@ -86,7 +92,8 @@ Requirements: Rust (version pinned in `backend/rust-toolchain.toml`), Node.js 24
 |---|---|
 | `task backend:run` | Backend on http://localhost:8080 without sign-in, data in `./data` |
 | `task frontend:run` | Angular dev server on http://localhost:4200 (API proxied to :8080) |
-| `task check` | Formatting, lint, all tests, builds, image — what CI runs |
+| `task check` | Formatting, lint, all tests, builds, image — what CI runs (starts a PostgreSQL test container) |
+| `task db:test` / `task db:test:stop` | Start / remove the PostgreSQL test database on 127.0.0.1:55432 |
 
 Working rules for contributors and coding agents: [AGENTS.md](AGENTS.md).
 

@@ -198,13 +198,27 @@ is stopped.
 
 ### 6.2 PostgreSQL (backend `postgres`)
 
-Tables `users`, `user_settings`, `tags`, `tasks`, `task_tags`, `time_entries`, `entry_history`.
-Database-enforced invariants:
+Migrations in `backend/migrations/`, applied at startup. Tables (`0001_init.sql`):
 
-- R1: partial unique index on `time_entries(user_id) WHERE end_at IS NULL`.
-- R5: exclusion constraint `EXCLUDE USING gist (user_id WITH =, tstzrange(start_at, coalesce(end_at, 'infinity')) WITH &&)`
-  (needs the `btree_gist` extension; created by the migration, or beforehand by the DB admin).
+| Table | Content |
+|---|---|
+| `users` | `key` (the user), `version` (grows with every change), the settings as columns |
+| `tags` | `user_key`, `name`, `color`, `position` (order of creation) |
+| `tasks` | the task fields; `tags` as `text[]` in the user's order |
+| `entries` | `task_id`, `user_key`, `start_at`, `end_at`, `source`, `note`, `keep_running`, `history` (`jsonb`, epoch seconds) |
+
+Database-enforced invariants, as a backstop to the domain code:
+
+- R1: partial unique index `entries_one_running` on `entries(user_key) WHERE end_at IS NULL`.
+- R4: `CHECK (end_at IS NULL OR end_at > start_at)`.
+- R5: exclusion constraint `entries_no_overlap` `EXCLUDE USING gist (user_key WITH =, tstzrange(start_at, coalesce(end_at, 'infinity')) WITH &&)`,
+  deferred to commit (needs `btree_gist`, a trusted extension the database owner may create).
 - Tag names unique per user on `lower(name)`.
+
+How the backend works: a write locks the user's row (`SELECT … FOR UPDATE`), applies the
+operation to the user's data and writes only what changed; reads use a per-process cache while
+`users.version` is unchanged. This keeps several replicas consistent. Both backends run the same
+contract tests (`backend/src/store/contract.rs`).
 
 ## 7. API (overview)
 
@@ -256,7 +270,9 @@ in whole seconds. Errors: `{"error": "<stable code>", "message": "<for people>"}
   HTTPRoute or Ingress, optional CloudNativePG cluster with backup, optional NetworkPolicy, PVC for
   the YAML backend. Refuses `storage: yaml` with more than one replica.
 - **docker compose:** `compose.yaml` with YAML backend and auth `none` (volume `./data`);
-  `compose.postgres.yaml` adds PostgreSQL.
+  `docker compose -f compose.yaml -f compose.postgres.yaml up` switches to PostgreSQL.
+- **Probes:** `/healthz` (process alive) and `/readyz` (storage answers; `503` while the
+  database is unreachable, so the pod leaves the load balancer without being restarted).
 - **CI (GitHub Actions):** format, clippy, backend tests (both backends, PostgreSQL service),
   frontend tests, chart lint and render tests on every push; on tag `v*` image and chart are
   built, signed and pushed.

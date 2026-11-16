@@ -17,6 +17,8 @@ RUN mkdir src && echo 'fn main() {}' > src/main.rs \
     && cargo build --release --locked \
     && rm -rf src
 COPY backend/src ./src
+# Embedded at compile time by sqlx::migrate!.
+COPY backend/migrations ./migrations
 RUN touch src/main.rs && cargo build --release --locked
 # Empty data directory owned by the runtime user (distroless has no shell to create it).
 RUN mkdir -p /out/data

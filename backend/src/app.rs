@@ -17,23 +17,28 @@ use tracing::error;
 use crate::api;
 use crate::config::{AuthMode, Config, Storage};
 use crate::domain::DomainError;
-use crate::store::{StoreError, YamlStore};
+use crate::store::{PgStore, Store, StoreError, YamlStore};
 
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<Config>,
-    pub store: Arc<YamlStore>,
+    pub store: Arc<Store>,
 }
 
-pub fn router(config: Config) -> Router {
+/// Opens the configured backend; PostgreSQL connects and applies the migrations.
+pub async fn open_store(config: &Config) -> anyhow::Result<Store> {
+    Ok(match &config.storage {
+        Storage::Yaml { data_dir } => Store::Yaml(YamlStore::new(data_dir)),
+        Storage::Postgres { database_url } => {
+            Store::Postgres(PgStore::connect(database_url).await?)
+        }
+    })
+}
+
+pub fn router(config: Config, store: Store) -> Router {
     let index = config.static_dir.join("index.html");
     // Unknown paths fall back to index.html, so deep links into the app work.
     let spa = ServeDir::new(&config.static_dir).fallback(ServeFile::new(index));
-    let store = match &config.storage {
-        Storage::Yaml { data_dir } => YamlStore::new(data_dir),
-        // Refused at startup by Config::ensure_supported until milestone M5.
-        Storage::Postgres { .. } => unreachable!("postgres is not implemented yet"),
-    };
     let state = AppState {
         config: Arc::new(config),
         store: Arc::new(store),
@@ -74,7 +79,7 @@ pub fn router(config: Config) -> Router {
 
     Router::new()
         .route("/healthz", get(ok))
-        .route("/readyz", get(ok))
+        .route("/readyz", get(ready))
         .nest("/api/v1", api)
         .fallback_service(spa)
         .layer(TraceLayer::new_for_http())
@@ -83,6 +88,15 @@ pub fn router(config: Config) -> Router {
 
 async fn ok() -> &'static str {
     "ok"
+}
+
+/// Ready when the storage answers (the database for PostgreSQL).
+async fn ready(State(state): State<AppState>) -> (StatusCode, &'static str) {
+    if state.store.ready().await {
+        (StatusCode::OK, "ok")
+    } else {
+        (StatusCode::SERVICE_UNAVAILABLE, "storage not ready")
+    }
 }
 
 /// Public runtime configuration for the frontend. Contains nothing secret.
@@ -266,14 +280,17 @@ pub mod tests {
         .unwrap();
         std::fs::write(static_dir.path().join("main.js"), "console.log(1)").unwrap();
         let data = tempfile::tempdir().unwrap();
-        let app = router(Config {
-            listen: "127.0.0.1:0".parse().unwrap(),
-            auth,
-            storage: Storage::Yaml {
-                data_dir: data.path().to_owned(),
+        let app = router(
+            Config {
+                listen: "127.0.0.1:0".parse().unwrap(),
+                auth,
+                storage: Storage::Yaml {
+                    data_dir: data.path().to_owned(),
+                },
+                static_dir: static_dir.path().to_owned(),
             },
-            static_dir: static_dir.path().to_owned(),
-        });
+            Store::Yaml(YamlStore::new(data.path())),
+        );
         TestApp {
             app,
             data,

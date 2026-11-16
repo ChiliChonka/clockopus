@@ -1,0 +1,31 @@
+# clockopus with PostgreSQL instead of YAML files (still without sign-in):
+#
+#   docker compose -f compose.yaml -f compose.postgres.yaml up --build
+#
+# The password below is for this local trial only; use a real secret anywhere else.
+services:
+  clockopus:
+    environment:
+      CLOCKOPUS_STORAGE: postgres
+      DATABASE_URL: postgres://clockopus:clockopus-local@db:5432/clockopus
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:17.7-trixie
+    environment:
+      POSTGRES_USER: clockopus
+      POSTGRES_PASSWORD: clockopus-local
+      POSTGRES_DB: clockopus
+    volumes:
+      - db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "clockopus", "-d", "clockopus"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+volumes:
+  db:
