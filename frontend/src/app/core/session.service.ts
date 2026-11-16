@@ -3,9 +3,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
 /** Mirrors `PublicConfig` in backend/src/app.rs. */
-export type PublicConfig =
-  | { auth: 'none' }
-  | { auth: 'oidc'; issuer: string; client_id: string };
+export type PublicConfig = { auth: 'none' } | { auth: 'oidc'; issuer: string; client_id: string };
 
 /** Mirrors `Me` in backend/src/app.rs. */
 export interface Me {

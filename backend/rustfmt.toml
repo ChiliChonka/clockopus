@@ -1,0 +1,4 @@
+# Editors and hooks that call rustfmt directly do not know the crate's edition; without these two
+# lines they parse as Rust 2015 and sort imports differently from `cargo fmt`.
+edition = "2024"
+style_edition = "2024"

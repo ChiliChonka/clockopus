@@ -8,8 +8,8 @@
 
 ---
 
-> **Status:** design phase. The specification and the first architecture decision are up for
-> review; there is no code yet. See [docs/SPEC.md](docs/SPEC.md) and
+> **Status:** early development. The skeleton runs (milestone M1); tasks and the timer come next.
+> What is planned and in which order: [docs/SPEC.md](docs/SPEC.md), architecture:
 > [docs/adr/0001-architecture.md](docs/adr/0001-architecture.md).
 
 ## The idea
@@ -61,6 +61,31 @@ clockopus is a single container: a Rust (Axum) backend that also serves the Angu
 
 The YAML files are meant to be read: times are written as local time with offset, tags by name.
 You can analyse them with any script you like.
+
+### Try it out
+
+```sh
+git clone https://github.com/ChiliChonka/clockopus.git
+cd clockopus
+docker compose up --build
+```
+
+Then open <http://localhost:8080>. Without sign-in the port is only reachable from your own
+machine. The container runs as user `1000:1000` so the files in `./data` belong to you; if
+`id -u` says otherwise, start it with `CLOCKOPUS_UID=$(id -u) CLOCKOPUS_GID=$(id -g) docker compose up --build`.
+
+## Development
+
+Requirements: Rust (version pinned in `backend/rust-toolchain.toml`), Node.js 24,
+[Task](https://taskfile.dev), Docker.
+
+| Command | Purpose |
+|---|---|
+| `task backend:run` | Backend on http://localhost:8080 without sign-in, data in `./data` |
+| `task frontend:run` | Angular dev server on http://localhost:4200 (API proxied to :8080) |
+| `task check` | Formatting, lint, all tests, builds, image — what CI runs |
+
+Working rules for contributors and coding agents: [AGENTS.md](AGENTS.md).
 
 ## License
 
