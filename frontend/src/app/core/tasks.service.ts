@@ -4,11 +4,15 @@ import { firstValueFrom } from 'rxjs';
 import { parseQuickAdd } from './quick-add';
 import {
   ApiErrorBody,
+  EntryView,
   TagView,
   TaskView,
   TimerView,
   UpdateTaskWire,
+  toAddEntryWire,
   toCreateTaskWire,
+  toStopForgottenWire,
+  toUpdateEntryWire,
   toUpdateTaskWire,
 } from './wire';
 
@@ -25,7 +29,13 @@ export class TasksService {
   /** When `tasks` was loaded (ms); live times add the time since then. */
   readonly loadedAt = signal(0);
 
+  readonly timer = signal<TimerView>({ running: null, forgotten: null });
+  /** Bumped after every change, so other views (day timeline) know to reload. */
+  readonly revision = signal(0);
+
   readonly running = computed(() => this.tasks().find((t) => t.running_since !== null) ?? null);
+  /** R7: set when the running timer looks forgotten. */
+  readonly forgotten = computed(() => this.timer().forgotten);
   /** The 8 tags with the most time in the last 30 days (server order). */
   readonly quickTags = computed(() => this.tags().slice(0, 8));
 
@@ -33,12 +43,14 @@ export class TasksService {
   async load(): Promise<void> {
     try {
       const status = this.showDone() ? 'all' : 'active';
-      const [tasks, tags] = await Promise.all([
+      const [tasks, tags, timer] = await Promise.all([
         firstValueFrom(this.http.get<TaskView[]>('/api/v1/tasks', { params: { status } })),
         firstValueFrom(this.http.get<TagView[]>('/api/v1/tags')),
+        firstValueFrom(this.http.get<TimerView>('/api/v1/timer')),
       ]);
       this.tasks.set(tasks);
       this.tags.set(tags);
+      this.timer.set(timer);
       this.loadedAt.set(Date.now());
       this.loaded.set(true);
     } catch (e) {
@@ -85,6 +97,55 @@ export class TasksService {
     await this.load();
   }
 
+  /** R8: stop the forgotten timer at `end`, recorded as a forgotten-timer correction. */
+  stopForgotten(end: Date): Promise<boolean> {
+    return this.run(() =>
+      firstValueFrom(this.http.post<TimerView>('/api/v1/timer/stop', toStopForgottenWire(end))),
+    );
+  }
+
+  /** R8 “Keep running”. */
+  keepRunning(): Promise<boolean> {
+    return this.run(() =>
+      firstValueFrom(this.http.post<TimerView>('/api/v1/timer/keep-running', {})),
+    );
+  }
+
+  /** Entries of one task, newest first. */
+  entries(taskId: string): Promise<EntryView[]> {
+    return firstValueFrom(this.http.get<EntryView[]>(`/api/v1/tasks/${taskId}/entries`));
+  }
+
+  /** Entries touching the local days `from..=to` (`YYYY-MM-DD`). */
+  entriesBetween(from: string, to: string): Promise<EntryView[]> {
+    return firstValueFrom(this.http.get<EntryView[]>('/api/v1/entries', { params: { from, to } }));
+  }
+
+  addEntry(taskId: string, start: Date, end: Date, note: string): Promise<boolean> {
+    return this.run(() =>
+      firstValueFrom(
+        this.http.post<EntryView>(
+          `/api/v1/tasks/${taskId}/entries`,
+          toAddEntryWire(start, end, note),
+        ),
+      ),
+    );
+  }
+
+  updateEntry(id: string, patch: { start?: Date; end?: Date; note?: string }): Promise<boolean> {
+    return this.run(() =>
+      firstValueFrom(this.http.patch<EntryView>(`/api/v1/entries/${id}`, toUpdateEntryWire(patch))),
+    );
+  }
+
+  deleteEntry(id: string): Promise<boolean> {
+    return this.run(() => firstValueFrom(this.http.delete<void>(`/api/v1/entries/${id}`)));
+  }
+
+  clearError(): void {
+    this.error.set(null);
+  }
+
   /** Runs an action, then reloads the board (also after a failure, the data may have changed). */
   private async run(op: () => Promise<unknown>): Promise<boolean> {
     let ok = true;
@@ -96,6 +157,7 @@ export class TasksService {
       this.error.set(errorMessage(e));
     }
     await this.load();
+    this.revision.update((r) => r + 1);
     return ok;
   }
 }

@@ -52,6 +52,26 @@ pub struct Entry {
     pub end: Option<Timestamp>,
     pub source: EntrySource,
     pub note: Option<String>,
+    /// R6: previous values of `start`/`end`, oldest first.
+    pub history: Vec<Change>,
+    /// R8 “Keep running”: no forgotten-timer prompt for this running entry.
+    pub keep_running: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ChangeReason {
+    Edit,
+    ForgottenTimer,
+}
+
+/// The values an entry had before a correction.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Change {
+    pub changed_at: Timestamp,
+    pub reason: ChangeReason,
+    pub start: Timestamp,
+    pub end: Option<Timestamp>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,10 +80,27 @@ pub struct Tag {
     pub color: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Settings {
     /// IANA time zone; `None` until the browser has sent one. Days are then computed in UTC.
     pub timezone: Option<String>,
+    /// R8: suggested end for a forgotten timer, on the day it started.
+    pub workday_end: jiff::civil::Time,
+    /// R7: a timer running longer than this is forgotten.
+    pub forgotten_after_hours: u8,
+}
+
+pub const DEFAULT_WORKDAY_END: jiff::civil::Time = jiff::civil::Time::constant(17, 0, 0, 0);
+pub const DEFAULT_FORGOTTEN_AFTER_HOURS: u8 = 10;
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            timezone: None,
+            workday_end: DEFAULT_WORKDAY_END,
+            forgotten_after_hours: DEFAULT_FORGOTTEN_AFTER_HOURS,
+        }
+    }
 }
 
 impl Settings {
@@ -90,9 +127,15 @@ pub enum DomainError {
         message: String,
     },
     NotFound,
+    /// R5: the time span overlaps another entry, named by `entry_id`.
+    Conflict {
+        code: &'static str,
+        message: String,
+        entry_id: Uuid,
+    },
 }
 
-fn invalid(code: &'static str, message: impl Into<String>) -> DomainError {
+pub(crate) fn invalid(code: &'static str, message: impl Into<String>) -> DomainError {
     DomainError::Invalid {
         code,
         message: message.into(),
@@ -222,7 +265,7 @@ impl UserData {
         })
     }
 
-    fn task_mut(&mut self, id: Uuid) -> Result<&mut Task, DomainError> {
+    pub(crate) fn task_mut(&mut self, id: Uuid) -> Result<&mut Task, DomainError> {
         self.tasks
             .iter_mut()
             .find(|t| t.id == id)
@@ -231,7 +274,7 @@ impl UserData {
 
     /// Uses the spelling of an existing tag (`support` typed, `Support` known → `Support`) and
     /// registers new tags.
-    fn adopt_tags(&mut self, tags: Vec<String>) -> Vec<String> {
+    pub(crate) fn adopt_tags(&mut self, tags: Vec<String>) -> Vec<String> {
         tags.into_iter()
             .map(|tag| {
                 let lower = tag.to_lowercase();
@@ -295,6 +338,8 @@ impl UserData {
             end: None,
             source: EntrySource::Timer,
             note: None,
+            history: Vec::new(),
+            keep_running: false,
         });
         Ok(Running {
             task_id: id,
@@ -329,6 +374,7 @@ impl UserData {
             task.entries.retain(|e| e.id != running.entry_id);
         } else if let Some(entry) = task.entries.iter_mut().find(|e| e.id == running.entry_id) {
             entry.end = Some(end);
+            entry.keep_running = false;
         }
         Ok(Some(running))
     }

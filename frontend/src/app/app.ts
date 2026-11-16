@@ -1,16 +1,26 @@
 import { Component, inject } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
+import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { SessionService } from './core/session.service';
 
 @Component({
-  imports: [RouterOutlet],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive],
   selector: 'app-root',
   template: `
     <header>
-      <a class="brand" href="/">
+      <a class="brand" routerLink="/">
         <img src="logo.svg" alt="" width="36" height="36" />
         <span>clockopus</span>
       </a>
+      <nav aria-label="Views">
+        <a
+          routerLink="/"
+          routerLinkActive="active"
+          [routerLinkActiveOptions]="{ exact: true }"
+          ariaCurrentWhenActive="page"
+          >Board</a
+        >
+        <a routerLink="/day" routerLinkActive="active" ariaCurrentWhenActive="page">Day</a>
+      </nav>
       @if (session.me(); as me) {
         <span class="user">{{ me.name }}</span>
       }
@@ -43,6 +53,28 @@ import { SessionService } from './core/session.service';
     }
     .user {
       color: var(--text-muted);
+      white-space: nowrap;
+    }
+    @media (max-width: 480px) {
+      .user {
+        display: none;
+      }
+    }
+    nav {
+      display: flex;
+      gap: 4px;
+      margin-right: auto;
+    }
+    nav a {
+      padding: 4px 10px;
+      border-radius: 8px;
+      color: var(--text-muted);
+      text-decoration: none;
+    }
+    nav a.active {
+      background: var(--bg);
+      color: var(--text);
+      font-weight: 600;
     }
     .error {
       margin: 16px;

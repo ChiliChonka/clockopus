@@ -25,17 +25,94 @@ export interface TagView {
   recent_seconds: number;
 }
 
+/** R7: the running timer looks forgotten. */
+export interface Forgotten {
+  task_id: string;
+  task_title: string;
+  entry_id: string;
+  start: string;
+  running_seconds: number;
+  /** Workday end on the start day, if it lies between start and now. */
+  suggested_end: string | null;
+}
+
 export interface TimerView {
   running: { task_id: string; entry_id: string; start: string } | null;
+  forgotten: Forgotten | null;
 }
 
 export interface Settings {
   timezone: string | null;
+  /** `HH:MM` */
+  workday_end: string;
+  forgotten_after_hours: number;
+}
+
+export type ChangeReason = 'edit' | 'forgotten-timer';
+
+/** Values an entry had before a correction (R6). */
+export interface Change {
+  changed_at: string;
+  reason: ChangeReason;
+  start: string;
+  end: string | null;
+}
+
+export interface EntryView {
+  id: string;
+  task_id: string;
+  task_title: string;
+  tags: string[];
+  start: string;
+  /** `null` while running. */
+  end: string | null;
+  source: 'timer' | 'manual';
+  note: string | null;
+  history: Change[];
 }
 
 export interface ApiErrorBody {
   error: string;
   message?: string;
+  /** The other entry of an overlap (R5). */
+  entry_id?: string;
+}
+
+export interface AddEntryWire {
+  start: string;
+  end: string;
+  note?: string;
+}
+
+/** Body of `POST /api/v1/tasks/{id}/entries`. */
+export function toAddEntryWire(start: Date, end: Date, note: string): AddEntryWire {
+  const out: AddEntryWire = { start: start.toISOString(), end: end.toISOString() };
+  if (note.trim()) out.note = note.trim();
+  return out;
+}
+
+export interface UpdateEntryWire {
+  start?: string;
+  end?: string;
+  note?: string;
+}
+
+/** Body of `PATCH /api/v1/entries/{id}`; `note: ''` removes the note. */
+export function toUpdateEntryWire(patch: {
+  start?: Date;
+  end?: Date;
+  note?: string;
+}): UpdateEntryWire {
+  const out: UpdateEntryWire = {};
+  if (patch.start) out.start = patch.start.toISOString();
+  if (patch.end) out.end = patch.end.toISOString();
+  if (patch.note !== undefined) out.note = patch.note.trim();
+  return out;
+}
+
+/** Body of `POST /api/v1/timer/stop` for the R8 correction of a forgotten timer. */
+export function toStopForgottenWire(end: Date): { end: string; reason: ChangeReason } {
+  return { end: end.toISOString(), reason: 'forgotten-timer' };
 }
 
 export interface CreateTaskWire {

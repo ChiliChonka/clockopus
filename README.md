@@ -8,8 +8,9 @@
 
 ---
 
-> **Status:** early development. Tasks, the timer, quick add with `#tags` and the YAML storage
-> work (milestone M2); corrections, the forgotten timer and reports come next.
+> **Status:** early development. Tasks, the timer, quick add with `#tags`, corrections with
+> history, the forgotten-timer prompt and the day timeline work (milestones M2–M3); week and month
+> reports, CSV and export come next.
 > What is planned and in which order: [docs/SPEC.md](docs/SPEC.md), architecture:
 > [docs/adr/0001-architecture.md](docs/adr/0001-architecture.md).
 

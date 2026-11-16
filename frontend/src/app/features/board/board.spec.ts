@@ -1,10 +1,10 @@
 import { computed, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Title } from '@angular/platform-browser';
-import { tagView, taskView } from '../../../testing/fixtures';
+import { forgotten, tagView, taskView } from '../../../testing/fixtures';
 import { Me, SessionService } from '../../core/session.service';
 import { TasksService } from '../../core/tasks.service';
-import { TagView, TaskView } from '../../core/wire';
+import { Forgotten, TagView, TaskView } from '../../core/wire';
 import { Board } from './board';
 
 describe('Board', () => {
@@ -15,15 +15,22 @@ describe('Board', () => {
   const loaded = signal(false);
   const showDone = signal(false);
   const error = signal<string | null>(null);
+  const forgottenTimer = signal<Forgotten | null>(null);
   const service = {
     tasks,
     tags,
     loaded,
     showDone,
     error,
+    revision: signal(0),
     loadedAt: signal(Date.now()),
     running: computed(() => tasks().find((t) => t.running_since) ?? null),
+    forgotten: forgottenTimer,
     quickTags: computed(() => tags().slice(0, 8)),
+    clearError: vi.fn(),
+    entries: vi.fn().mockResolvedValue([]),
+    stopForgotten: vi.fn().mockResolvedValue(true),
+    keepRunning: vi.fn().mockResolvedValue(true),
     load: vi.fn().mockResolvedValue(undefined),
     create: vi.fn().mockResolvedValue(true),
     start: vi.fn().mockResolvedValue(true),
@@ -40,6 +47,7 @@ describe('Board', () => {
     loaded.set(true);
     showDone.set(false);
     error.set(null);
+    forgottenTimer.set(null);
     Object.values(service).forEach((v) => {
       if (typeof v === 'function' && 'mockClear' in v) (v as ReturnType<typeof vi.fn>).mockClear();
     });
@@ -148,8 +156,33 @@ describe('Board', () => {
   it('shows errors from the service', async () => {
     error.set('The end cannot be in the future.');
     await fixture.whenStable();
-    expect(el().querySelector('[role=alert]')?.textContent).toBe(
+    expect(el().querySelector('p[role=alert]')?.textContent).toBe(
       'The end cannot be in the future.',
     );
+  });
+
+  it('shows the forgotten-timer banner and passes its choices on', async () => {
+    expect(el().querySelector('app-forgotten-banner')).toBeNull();
+    forgottenTimer.set(forgotten({ suggested_end: '2026-11-16T16:00:00Z' }));
+    await fixture.whenStable();
+    const banner = el().querySelector('app-forgotten-banner')!;
+    expect(banner).not.toBeNull();
+    const buttons = [...banner.querySelectorAll('button')];
+    buttons.find((b) => b.textContent!.trim().startsWith('Stop at'))!.click();
+    expect(service.stopForgotten).toHaveBeenCalledWith(new Date('2026-11-16T16:00:00Z'));
+    buttons.find((b) => b.textContent!.trim() === 'Keep running')!.click();
+    expect(service.keepRunning).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the edit dialog from a card', async () => {
+    tasks.set([taskView({ id: 'a', title: 'A' })]);
+    await fixture.whenStable();
+    const edit = [...el().querySelectorAll<HTMLButtonElement>('app-task-card button')].find(
+      (b) => b.textContent === 'Edit',
+    )!;
+    edit.click();
+    await fixture.whenStable();
+    expect(fixture.componentInstance.editing()?.id).toBe('a');
+    expect(el().querySelector('dialog')!.open).toBe(true);
   });
 });

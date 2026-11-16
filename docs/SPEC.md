@@ -169,7 +169,17 @@ tags:
   - name: customer-x
 ```
 
-`settings.yaml` holds the settings from section 2.
+`settings.yaml` holds the settings from section 2 (week start and CSV rounding follow in M4):
+
+```yaml
+version: 1
+timezone: Europe/Berlin
+workday_end: "17:00"
+forgotten_after_hours: 10
+```
+
+A running entry the user chose to keep (R8 “Keep running”) carries `keep_running: true` until it
+is stopped.
 
 ### 6.2 PostgreSQL (backend `postgres`)
 
@@ -185,19 +195,21 @@ Database-enforced invariants:
 
 JSON over HTTPS under `/api/v1`, bearer token in auth mode `oidc`. Times in RFC 3339, durations
 in whole seconds. Errors: `{"error": "<stable code>", "message": "<for people>"}` with `400`,
-`401`, `404` or `500`.
+`401`, `404` or `500`; an overlap (R5) is `409` with `"error": "overlap"` and the other entry's
+`entry_id`.
 
 | Method and path | Purpose |
 |---|---|
 | `GET /config` | Public runtime config for the frontend (auth mode, issuer, client ID) |
 | `GET /me`, `DELETE /me` | Current user; delete account |
-| `GET/PUT /me/settings` | Settings; the frontend sends the browser's time zone on the first visit |
+| `GET/PUT /me/settings` | `timezone`, `workday_end` (`HH:MM`), `forgotten_after_hours` (1–24); `PUT` changes only the given fields. The frontend sends the browser's time zone on the first visit. |
 | `GET /tasks?status=active\|done\|all`, `POST /tasks` | List in board order with `today_seconds`, `total_seconds`, `running_since`; create (optionally `start: true`). Filtering by text or tag happens in the browser. |
 | `PATCH /tasks/{id}`, `DELETE /tasks/{id}` | Edit (only the given fields; `link: ""` removes the link), delete |
-| `POST /tasks/{id}/start`, `POST /timer/stop` | Start (R2), stop (optional `end`); stopping when nothing runs is not an error |
-| `GET /timer` | Running entry plus `forgotten` flag and suggested end (R7/R8) |
-| `POST /timer/acknowledge` | “Keep running” |
-| `GET/POST /tasks/{id}/entries`, `PATCH/DELETE /entries/{id}` | Time entries |
+| `POST /tasks/{id}/start`, `POST /timer/stop` | Start (R2), stop (optional `end`; with `"reason": "forgotten-timer"` the R8 correction, which needs `end` and is recorded in the history); stopping when nothing runs is not an error |
+| `GET /timer` | `{"running": …, "forgotten": null \| {task_title, start, running_seconds, suggested_end}}` (R7/R8) |
+| `POST /timer/keep-running` | R8 “Keep running” |
+| `GET/POST /tasks/{id}/entries`, `PATCH/DELETE /entries/{id}` | Time entries of a task (newest first) with `history`; add (R4/R5); change `start`/`end`/`note` (R6; the end of a running entry is set by stopping it); delete |
+| `GET /entries?from=YYYY-MM-DD&to=YYYY-MM-DD` | Entries touching these local days (at most 366), for the day view |
 | `GET /tags`, `PATCH /tags/{name}`, `DELETE /tags/{name}` | Tags with usage; rename; delete |
 | `GET /reports?from=&to=` | Totals per task, per tag and per day (dates in user time zone) |
 | `GET /export.csv?from=&to=&round=` | CSV export |

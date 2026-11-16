@@ -89,4 +89,12 @@ describe('TaskCard', () => {
     expect(() => button(el, 'Mark done')).toThrow();
     expect(el.querySelector('article')?.classList).toContain('is-done');
   });
+
+  it('emits edit', async () => {
+    const el = await render(taskView());
+    const edit = vi.fn();
+    fixture.componentInstance.edit.subscribe(edit);
+    button(el, 'Edit').click();
+    expect(edit).toHaveBeenCalledTimes(1);
+  });
 });

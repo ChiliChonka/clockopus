@@ -42,4 +42,14 @@ describe('App', () => {
     const alert = (fixture.nativeElement as HTMLElement).querySelector('[role=alert]');
     expect(alert?.textContent).toContain('not reachable');
   });
+
+  it('links to the board and the day view', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const links = [...(fixture.nativeElement as HTMLElement).querySelectorAll('nav a')];
+    expect(links.map((a) => [a.textContent!.trim(), a.getAttribute('href')])).toEqual([
+      ['Board', '/'],
+      ['Day', '/day'],
+    ]);
+  });
 });

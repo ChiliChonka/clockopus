@@ -1,0 +1,175 @@
+:host {
+  display: grid;
+  gap: 16px;
+}
+.days {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.days h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+.days a {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 1.3rem;
+  padding: 0 6px;
+}
+.days a.today {
+  font-size: 0.95rem;
+  margin-left: auto;
+}
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 24px;
+}
+@media (max-width: 720px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+.timeline {
+  position: relative;
+  margin-left: 48px;
+  border-left: 1px solid var(--border);
+  touch-action: none;
+}
+.hour {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed var(--border);
+}
+.hour span {
+  position: absolute;
+  left: -48px;
+  top: -0.6em;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.block {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  overflow: hidden;
+  border-radius: 6px;
+  border-left: 4px solid rgb(0 0 0 / 0.25);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+.block.selected {
+  outline: 2px solid var(--accent);
+}
+.block.running {
+  border-left-color: var(--running);
+}
+.block button {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  width: 100%;
+  height: 100%;
+  padding: 2px 8px;
+  border: 0;
+  background: none;
+  text-align: left;
+  align-content: start;
+  font-size: 0.85rem;
+  color: #1f1b33;
+}
+.handle {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 8px;
+  cursor: ns-resize;
+  z-index: 1;
+}
+.handle.top {
+  top: 0;
+}
+.handle.bottom {
+  bottom: 0;
+}
+.c1 {
+  background: #cfc7f7;
+}
+.c2 {
+  background: #ffd2b0;
+}
+.c3 {
+  background: #b9e6d3;
+}
+.c4 {
+  background: #f7c6d9;
+}
+.c5 {
+  background: #c3dcf7;
+}
+.c6 {
+  background: #f2e3a6;
+}
+.c7 {
+  background: #d9d4cc;
+}
+.c8 {
+  background: #c8eef0;
+}
+.editor,
+aside {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.editor {
+  margin-top: 16px;
+}
+h3 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+aside h3 {
+  margin-top: 16px;
+}
+.total {
+  margin: 0 0 8px;
+}
+.list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.list li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.name {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}
+.swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+.hint {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+}
+.empty {
+  padding: 32px 0;
+}
+.error {
+  margin: 0;
+  color: var(--danger);
+}

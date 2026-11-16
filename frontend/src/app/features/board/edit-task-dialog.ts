@@ -1,0 +1,230 @@
+import {
+  Component,
+  ElementRef,
+  effect,
+  inject,
+  input,
+  linkedSignal,
+  output,
+  signal,
+  untracked,
+  viewChild,
+} from '@angular/core';
+import { fromLocalInput, localDate } from '../../core/local-time';
+import { TasksService } from '../../core/tasks.service';
+import { EntryView, TaskView } from '../../core/wire';
+import { EntryChange, EntryRow } from '../entries/entry-row';
+
+/** Splits `review #team-a, x` into tag names. */
+export function parseTagInput(text: string): string[] {
+  return text
+    .split(/[\s,]+/)
+    .map((t) => t.replace(/^#+/, ''))
+    .filter(Boolean);
+}
+
+/** Edit dialog (docs/SPEC.md, 4.2): title, tags, link, entries, add time. */
+@Component({
+  selector: 'app-edit-task-dialog',
+  imports: [EntryRow],
+  template: `
+    <dialog #dialog (close)="closed.emit()" aria-labelledby="edit-title">
+      @if (task(); as task) {
+        <header>
+          <h2 id="edit-title">Edit task</h2>
+          <button type="button" class="close" aria-label="Close" (click)="dialog.close()">✕</button>
+        </header>
+        <form class="task" (submit)="$event.preventDefault(); saveTask(task)">
+          <label
+            >Title <input type="text" [value]="title()" (input)="title.set(t.value)" #t
+          /></label>
+          <label>
+            Tags
+            <input
+              type="text"
+              [value]="tags()"
+              (input)="tags.set(g.value)"
+              placeholder="review team-a"
+              #g
+            />
+          </label>
+          <label>
+            Link
+            <input
+              type="text"
+              [value]="link()"
+              (input)="link.set(l.value)"
+              placeholder="https://…"
+              #l
+            />
+          </label>
+          <button type="submit" class="primary">Save task</button>
+        </form>
+
+        @if (tasks.error(); as error) {
+          <p class="error" role="alert">{{ error }}</p>
+        }
+
+        <h3>Add time</h3>
+        <form class="add" (submit)="$event.preventDefault(); addTime(task)">
+          <label
+            >Date <input type="date" [value]="addDate()" (input)="addDate.set(d.value)" #d
+          /></label>
+          <label
+            >From <input type="time" [value]="addFrom()" (input)="addFrom.set(f.value)" #f
+          /></label>
+          <label>To <input type="time" [value]="addTo()" (input)="addTo.set(u.value)" #u /></label>
+          <label class="grow">
+            Note <input type="text" [value]="addNote()" (input)="addNote.set(n.value)" #n />
+          </label>
+          <button type="submit">Add</button>
+        </form>
+
+        <h3>Time entries</h3>
+        @for (entry of entries(); track entry.id) {
+          <app-entry-row
+            [entry]="entry"
+            (save)="saveEntry(entry, $event)"
+            (remove)="removeEntry(entry)"
+          />
+        } @empty {
+          <p class="muted">No time on this task yet.</p>
+        }
+      }
+    </dialog>
+  `,
+  styles: `
+    dialog {
+      width: min(760px, calc(100vw - 32px));
+      max-height: calc(100vh - 48px);
+      padding: 16px 20px 20px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg);
+      color: var(--text);
+    }
+    dialog::backdrop {
+      background: rgb(0 0 0 / 0.4);
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    h2 {
+      margin: 0;
+      font-size: 1.2rem;
+    }
+    h3 {
+      margin: 20px 0 8px;
+      font-size: 1rem;
+    }
+    .close {
+      border: 0;
+      background: none;
+    }
+    form {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: end;
+    }
+    label {
+      display: grid;
+      gap: 2px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+    .task label,
+    .grow {
+      flex: 1 1 12rem;
+    }
+    input {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 6px 8px;
+      color: var(--text);
+    }
+    app-entry-row {
+      display: block;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .error {
+      margin: 12px 0 0;
+      color: var(--danger);
+    }
+  `,
+})
+export class EditTaskDialog {
+  protected readonly tasks = inject(TasksService);
+  readonly task = input<TaskView | null>(null);
+  readonly closed = output<void>();
+  private readonly dialog = viewChild.required<ElementRef<HTMLDialogElement>>('dialog');
+
+  readonly title = linkedSignal(() => this.task()?.title ?? '');
+  readonly tags = linkedSignal(() => (this.task()?.tags ?? []).join(' '));
+  readonly link = linkedSignal(() => this.task()?.link ?? '');
+  readonly entries = signal<EntryView[]>([]);
+
+  readonly addDate = signal(localDate(new Date()));
+  readonly addFrom = signal('');
+  readonly addTo = signal('');
+  readonly addNote = signal('');
+
+  constructor() {
+    // Open as a modal while a task is set.
+    effect(() => {
+      const el = this.dialog().nativeElement;
+      if (this.task() && !el.open) {
+        untracked(() => this.tasks.clearError());
+        el.showModal();
+      } else if (!this.task() && el.open) {
+        el.close();
+      }
+    });
+    // (Re)load the entries when the task changes or anything was saved.
+    effect(() => {
+      const task = this.task();
+      this.tasks.revision();
+      if (task) untracked(() => void this.loadEntries(task.id));
+    });
+  }
+
+  private async loadEntries(taskId: string): Promise<void> {
+    this.entries.set(await this.tasks.entries(taskId));
+  }
+
+  saveTask(task: TaskView): void {
+    void this.tasks.update(task.id, {
+      title: this.title(),
+      tags: parseTagInput(this.tags()),
+      link: this.link().trim(),
+    });
+  }
+
+  async addTime(task: TaskView): Promise<void> {
+    const start = fromLocalInput(`${this.addDate()}T${this.addFrom()}`);
+    const end = fromLocalInput(`${this.addDate()}T${this.addTo()}`);
+    if (!start || !end) {
+      this.tasks.error.set('Enter a date and both times.');
+      return;
+    }
+    if (await this.tasks.addEntry(task.id, start, end, this.addNote())) {
+      this.addFrom.set('');
+      this.addTo.set('');
+      this.addNote.set('');
+    }
+  }
+
+  saveEntry(entry: EntryView, change: EntryChange): void {
+    void this.tasks.updateEntry(entry.id, change);
+  }
+
+  removeEntry(entry: EntryView): void {
+    if (confirm('Delete this time entry? This cannot be undone.')) {
+      void this.tasks.deleteEntry(entry.id);
+    }
+  }
+}
