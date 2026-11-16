@@ -36,7 +36,8 @@ context switches.
   starts a new entry for B. No gap, no overlap.
 - **R3 — stop.** Stop ends the running entry now. An optional end time in the past is allowed
   (≥ start).
-- Starting a task updates its `last_used_at`; a `done` task cannot be started (reopen it first).
+- Starting a task updates its `last_used_at`. Starting a `done` task reopens it (status `active`)
+  and puts it back on the board.
 
 ### 3.2 Manual entries and corrections
 
@@ -265,7 +266,7 @@ Team or manager views, shared tags, projects or clients, billing, approvals, ema
 idle detection, native apps, API tokens for CLI or Stream Deck (candidate for v2), translations
 (the UI is English; i18n can come later).
 
-## 14. Open points
+## 14. Decisions taken during review (2026-11-16)
 
-1. **UI language:** English only in v1 (proposed), or German from the start?
-2. **Reopen and done:** should starting a `done` task reopen it automatically instead of refusing?
+1. **UI language:** English only in v1.
+2. **Starting a done task** reopens it instead of refusing (section 3.1).
