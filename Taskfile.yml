@@ -1,0 +1,71 @@
+version: '3'
+
+# All commands go through this file (see AGENTS.md). `task check` must be green before every commit.
+
+vars:
+  STATIC_DIR: '{{.ROOT_DIR}}/frontend/dist/clockopus/browser'
+
+tasks:
+  check:
+    desc: Everything CI checks - formatting, lint, all tests, builds
+    cmds:
+      - task: backend:check
+      - task: frontend:check
+      - task: image
+
+  fmt:
+    desc: Format backend and frontend code
+    cmds:
+      - cargo fmt --manifest-path backend/Cargo.toml
+      - cd frontend && npx prettier --write "src/**/*.{ts,html,css}"
+
+  backend:check:
+    dir: backend
+    cmds:
+      - cargo fmt --check
+      - cargo clippy --all-targets --locked -- -D warnings
+      - cargo test --locked
+
+  frontend:install:
+    dir: frontend
+    sources: [package-lock.json]
+    cmds:
+      - npm ci --no-audit --no-fund
+
+  frontend:check:
+    dir: frontend
+    deps: [frontend:install]
+    cmds:
+      - npx prettier --check "src/**/*.{ts,html,css}"
+      - npx ng test --watch=false
+      - npx ng build
+
+  backend:run:
+    desc: Run the backend natively without sign-in, data in ./data, app from the last frontend build
+    dir: backend
+    env:
+      CLOCKOPUS_AUTH: none
+      CLOCKOPUS_STORAGE: yaml
+      CLOCKOPUS_DATA_DIR: '{{.ROOT_DIR}}/data'
+      CLOCKOPUS_STATIC_DIR: '{{.STATIC_DIR}}'
+      CLOCKOPUS_LISTEN: 127.0.0.1:8080
+    cmds:
+      - cargo run
+
+  frontend:run:
+    desc: Angular dev server on http://localhost:4200, API proxied to the backend on :8080
+    dir: frontend
+    deps: [frontend:install]
+    cmds:
+      - npx ng serve
+
+  image:
+    desc: Build the container image clockopus:local
+    cmds:
+      - docker build -t clockopus:local .
+
+  up:
+    desc: Start clockopus with docker compose on http://localhost:8080
+    cmds:
+      - docker compose up --build -d
+      - docker compose ps

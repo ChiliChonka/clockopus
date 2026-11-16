@@ -1,0 +1,4 @@
+/backend/target/
+/data/*
+!/data/.gitkeep
+.task/

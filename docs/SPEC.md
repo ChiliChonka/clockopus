@@ -219,8 +219,8 @@ JSON over HTTPS under `/api/v1`, bearer token in auth mode `oidc`. Times in RFC 
 ## 9. Delivery
 
 - **Repository** `github.com/ChiliChonka/clockopus`, public, Apache-2.0, English. Layout:
-  `backend/` (Rust workspace), `frontend/` (Angular), `charts/clockopus/`, `deploy/compose/`,
-  `docs/`.
+  `backend/` (Rust), `frontend/` (Angular), `charts/clockopus/`, `docs/`; `compose.yaml`,
+  `Dockerfile` and `Taskfile.yml` at the root.
 - **Image** `ghcr.io/chilichonka/clockopus:<version>`, multi-stage build, non-root, read-only
   root filesystem; `linux/amd64` and `linux/arm64`.
 - **Chart** `oci://ghcr.io/chilichonka/charts/clockopus`: Deployment, Service, optional

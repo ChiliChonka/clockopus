@@ -1,0 +1,25 @@
+# Try clockopus locally: no sign-in, data as YAML files in ./data.
+#
+#   docker compose up --build      then open http://localhost:8080
+#
+# Without sign-in everyone who reaches the port is the same user, so the port is bound to
+# 127.0.0.1 only. The container runs as your user (default 1000:1000) so the files in ./data
+# stay yours; set CLOCKOPUS_UID / CLOCKOPUS_GID if `id -u` / `id -g` differ.
+name: clockopus
+
+services:
+  clockopus:
+    build: .
+    image: clockopus:local
+    user: "${CLOCKOPUS_UID:-1000}:${CLOCKOPUS_GID:-1000}"
+    environment:
+      CLOCKOPUS_AUTH: none
+      CLOCKOPUS_STORAGE: yaml
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./data:/data
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
