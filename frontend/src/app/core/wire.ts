@@ -41,11 +41,30 @@ export interface TimerView {
   forgotten: Forgotten | null;
 }
 
+export type WeekStart = 'monday' | 'sunday';
+
 export interface Settings {
   timezone: string | null;
   /** `HH:MM` */
   workday_end: string;
   forgotten_after_hours: number;
+  week_start: WeekStart;
+  /** Default CSV rounding in minutes: 0, 5 or 15. */
+  csv_rounding: number;
+}
+
+/** Body of `PUT /api/v1/me/settings`: only the given fields change. */
+export type SettingsPatch = Partial<Omit<Settings, 'timezone'>> & { timezone?: string };
+
+/** `GET /api/v1/reports?from&to` (backend/src/reports.rs). */
+export interface Report {
+  from: string;
+  to: string;
+  total_seconds: number;
+  days: { date: string; total_seconds: number; by_task: { task_id: string; seconds: number }[] }[];
+  by_task: { task_id: string; title: string; tags: string[]; seconds: number }[];
+  /** Variant A; `tag: null` is untagged. */
+  by_tag: { tag: string | null; seconds: number }[];
 }
 
 export type ChangeReason = 'edit' | 'forgotten-timer';

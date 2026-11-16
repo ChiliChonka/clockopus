@@ -22,8 +22,8 @@ use uuid::Uuid;
 use jiff::civil::Time;
 
 use crate::domain::{
-    Change, ChangeReason, DEFAULT_FORGOTTEN_AFTER_HOURS, DEFAULT_WORKDAY_END, DomainError, Entry,
-    EntrySource, Settings, Tag, Task, TaskStatus, UserData,
+    CSV_ROUNDINGS, Change, ChangeReason, DEFAULT_FORGOTTEN_AFTER_HOURS, DEFAULT_WORKDAY_END,
+    DomainError, Entry, EntrySource, Settings, Tag, Task, TaskStatus, UserData, WeekStart,
 };
 
 const FORMAT_VERSION: u32 = 1;
@@ -90,6 +90,23 @@ impl YamlStore {
         save(&self.user_dir(user).map_err(StoreError::Io)?, &copy).map_err(StoreError::Io)?;
         users.insert(user.to_owned(), copy);
         Ok(result)
+    }
+
+    /// Removes all data of a user: files and memory (`DELETE /me`).
+    pub async fn delete_user(&self, user: &str) -> Result<(), StoreError> {
+        let dir = self.user_dir(user).map_err(StoreError::Io)?;
+        let mut users = self.users.lock().await;
+        match fs::remove_dir_all(&dir) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(StoreError::Io(
+                    anyhow::Error::new(e).context(format!("cannot delete {}", dir.display())),
+                ));
+            }
+        }
+        users.remove(user);
+        Ok(())
     }
 
     fn loaded<'a>(
@@ -190,6 +207,11 @@ struct SettingsFile {
     workday_end: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     forgotten_after_hours: Option<u8>,
+    /// Missing in files from before M4, then the default applies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    week_start: Option<WeekStart>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    csv_rounding: Option<u8>,
 }
 
 impl SettingsFile {
@@ -199,8 +221,70 @@ impl SettingsFile {
             timezone: None,
             workday_end: None,
             forgotten_after_hours: None,
+            week_start: None,
+            csv_rounding: None,
         }
     }
+}
+
+/// `GET /export` and `POST /import`: everything of one user in one readable YAML document,
+/// in the same shapes as the files in the data directory.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExportFile {
+    version: u32,
+    exported_at: String,
+    settings: SettingsFile,
+    #[serde(default)]
+    tags: Vec<TagDto>,
+    #[serde(default)]
+    tasks: Vec<TaskDto>,
+}
+
+const EXPORT_HEADER: &str = "# clockopus export. Import it into an empty account (Settings → Import).\n# Times are local with UTC offset (RFC 3339).\n";
+
+pub fn export_yaml(data: &UserData, now: Timestamp) -> anyhow::Result<String> {
+    let (tasks, tags, settings) = to_files(data);
+    let tz = data.settings.time_zone();
+    let file = ExportFile {
+        version: FORMAT_VERSION,
+        exported_at: local(now, &tz),
+        settings,
+        tags: tags.tags,
+        tasks: tasks.tasks,
+    };
+    let body = serde_saphyr::to_string(&file).context("cannot serialise the export")?;
+    Ok(format!("{EXPORT_HEADER}{body}"))
+}
+
+/// Reads an export. Problems are the uploader's, so they come back as `import_invalid`.
+pub fn import_yaml(text: &str) -> Result<UserData, DomainError> {
+    let bad = |message: String| DomainError::Invalid {
+        code: "import_invalid",
+        message,
+    };
+    let file: ExportFile = serde_saphyr::from_str(text)
+        .map_err(|e| bad(format!("This is not a clockopus export: {e}")))?;
+    if file.version != FORMAT_VERSION {
+        return Err(bad(format!(
+            "Export format version {} is not supported (expected {FORMAT_VERSION}).",
+            file.version
+        )));
+    }
+    let data = from_files(
+        TasksFile {
+            version: FORMAT_VERSION,
+            tasks: file.tasks,
+        },
+        TagsFile {
+            version: FORMAT_VERSION,
+            tags: file.tags,
+        },
+        file.settings,
+    )
+    .map_err(|e| bad(format!("{e:#}")))?;
+    data.validate()?;
+    Ok(data)
 }
 
 fn local(ts: Timestamp, tz: &TimeZone) -> String {
@@ -272,6 +356,8 @@ fn to_files(data: &UserData) -> (TasksFile, TagsFile, SettingsFile) {
             timezone: data.settings.timezone.clone(),
             workday_end: Some(data.settings.workday_end.strftime("%H:%M").to_string()),
             forgotten_after_hours: Some(data.settings.forgotten_after_hours),
+            week_start: Some(data.settings.week_start),
+            csv_rounding: Some(data.settings.csv_rounding),
         },
     )
 }
@@ -344,6 +430,12 @@ fn from_files(
             forgotten_after_hours: settings
                 .forgotten_after_hours
                 .unwrap_or(DEFAULT_FORGOTTEN_AFTER_HOURS),
+            week_start: settings.week_start.unwrap_or_default(),
+            csv_rounding: match settings.csv_rounding {
+                Some(r) if CSV_ROUNDINGS.contains(&r) => r,
+                Some(r) => bail!("settings.yaml: csv_rounding {r} is not 0, 5 or 15"),
+                None => 0,
+            },
         },
         tasks,
         tags: tags

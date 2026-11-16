@@ -43,13 +43,17 @@ describe('App', () => {
     expect(alert?.textContent).toContain('not reachable');
   });
 
-  it('links to the board and the day view', async () => {
+  it('links to all views', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const links = [...(fixture.nativeElement as HTMLElement).querySelectorAll('nav a')];
     expect(links.map((a) => [a.textContent!.trim(), a.getAttribute('href')])).toEqual([
       ['Board', '/'],
       ['Day', '/day'],
+      ['Week', '/week'],
+      ['Month', '/month'],
+      ['⚙', '/settings'],
     ]);
+    expect(links[4].getAttribute('aria-label')).toBe('Settings');
   });
 });

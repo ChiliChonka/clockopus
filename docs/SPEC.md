@@ -119,7 +119,18 @@ only), **Delete my account** (all data, with confirmation).
 - A running entry counts until now.
 - **CSV export** for a range: one row per entry and day (entries crossing midnight are split),
   columns `date, task, tags, start, end, duration_minutes, note`. Optional rounding of each row to
-  5 or 15 minutes (nearest); off by default.
+  5 or 15 minutes (nearest); off by default (setting `csv_rounding`, overridable per download).
+  Times are local `HH:MM`; a piece that ends at midnight ends at `24:00`; tags are separated by
+  spaces. Comma-separated, UTF-8, quoted where needed. Cells that start with `=`, `+`, `-`, `@`,
+  tab or carriage return get a leading `'`, so a title cannot run as a spreadsheet formula.
+- **Week** starts on the `week_start` setting (Monday by default); the browser computes the range
+  from it and asks `GET /reports` for those days.
+- **Data export** (`GET /export`): one YAML document with `version`, `exported_at`, `settings`,
+  `tags` and `tasks` in the shapes of section 6.1. **Import** (`POST /import`) accepts exactly that,
+  only into an empty account (no tasks, no tags), and checks it like the running app does: unique
+  ids, `start < end`, at most one running entry, no overlaps. Problems are `400 import_invalid`.
+- **Delete my account** removes all files or rows of the user. Using clockopus again afterwards
+  starts a new, empty account (the first visit sends the time zone again).
 
 ## 6. Data
 
@@ -169,14 +180,18 @@ tags:
   - name: customer-x
 ```
 
-`settings.yaml` holds the settings from section 2 (week start and CSV rounding follow in M4):
+`settings.yaml` holds the settings from section 2:
 
 ```yaml
 version: 1
 timezone: Europe/Berlin
 workday_end: "17:00"
 forgotten_after_hours: 10
+week_start: monday     # monday | sunday
+csv_rounding: 0        # 0 | 5 | 15
 ```
+
+Fields added later are optional when reading; missing ones take their defaults.
 
 A running entry the user chose to keep (R8 “Keep running”) carries `keep_running: true` until it
 is stopped.
@@ -201,8 +216,8 @@ in whole seconds. Errors: `{"error": "<stable code>", "message": "<for people>"}
 | Method and path | Purpose |
 |---|---|
 | `GET /config` | Public runtime config for the frontend (auth mode, issuer, client ID) |
-| `GET /me`, `DELETE /me` | Current user; delete account |
-| `GET/PUT /me/settings` | `timezone`, `workday_end` (`HH:MM`), `forgotten_after_hours` (1–24); `PUT` changes only the given fields. The frontend sends the browser's time zone on the first visit. |
+| `GET /me`, `DELETE /me` | Current user; delete all data of the user (`204`) |
+| `GET/PUT /me/settings` | `timezone`, `workday_end` (`HH:MM`), `forgotten_after_hours` (1–24), `week_start` (`monday`/`sunday`), `csv_rounding` (0/5/15); `PUT` changes only the given fields. The frontend sends the browser's time zone on the first visit. |
 | `GET /tasks?status=active\|done\|all`, `POST /tasks` | List in board order with `today_seconds`, `total_seconds`, `running_since`; create (optionally `start: true`). Filtering by text or tag happens in the browser. |
 | `PATCH /tasks/{id}`, `DELETE /tasks/{id}` | Edit (only the given fields; `link: ""` removes the link), delete |
 | `POST /tasks/{id}/start`, `POST /timer/stop` | Start (R2), stop (optional `end`; with `"reason": "forgotten-timer"` the R8 correction, which needs `end` and is recorded in the history); stopping when nothing runs is not an error |
@@ -211,9 +226,9 @@ in whole seconds. Errors: `{"error": "<stable code>", "message": "<for people>"}
 | `GET/POST /tasks/{id}/entries`, `PATCH/DELETE /entries/{id}` | Time entries of a task (newest first) with `history`; add (R4/R5); change `start`/`end`/`note` (R6; the end of a running entry is set by stopping it); delete |
 | `GET /entries?from=YYYY-MM-DD&to=YYYY-MM-DD` | Entries touching these local days (at most 366), for the day view |
 | `GET /tags`, `PATCH /tags/{name}`, `DELETE /tags/{name}` | Tags with usage; rename; delete |
-| `GET /reports?from=&to=` | Totals per task, per tag and per day (dates in user time zone) |
-| `GET /export.csv?from=&to=&round=` | CSV export |
-| `GET /export`, `POST /import` | Full YAML export and import |
+| `GET /reports?from=&to=` | `total_seconds`, `days` (every day of the range with its tasks), `by_task`, `by_tag` (variant A, `tag: null` = untagged); dates in the user's time zone, at most 366 days |
+| `GET /export.csv?from=&to=&round=` | CSV download (section 5); `round` defaults to the setting |
+| `GET /export`, `POST /import` | YAML download of all data; import of such a file into an empty account (`204`; `400 account_not_empty` / `import_invalid`) |
 | `GET /healthz`, `GET /readyz` | Probes (outside `/api/v1`) |
 
 ## 8. Configuration

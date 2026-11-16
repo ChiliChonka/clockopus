@@ -41,7 +41,7 @@ pub fn router(config: Config) -> Router {
 
     let api = Router::new()
         .route("/config", get(public_config))
-        .route("/me", get(me))
+        .route("/me", get(me).delete(api::delete_me))
         .route(
             "/me/settings",
             get(api::get_settings).put(api::put_settings),
@@ -65,6 +65,10 @@ pub fn router(config: Config) -> Router {
         .route("/timer/stop", post(api::stop_timer))
         .route("/timer/keep-running", post(api::keep_running))
         .route("/tags", get(api::list_tags))
+        .route("/reports", get(api::get_report))
+        .route("/export.csv", get(api::export_csv))
+        .route("/export", get(api::export_data))
+        .route("/import", post(api::import_data))
         // Unknown API paths answer 404 instead of the app's index.html.
         .fallback(api_not_found);
 

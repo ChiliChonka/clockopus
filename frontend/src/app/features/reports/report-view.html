@@ -1,0 +1,133 @@
+<nav class="periods" aria-label="Choose period">
+  @if (mode() === 'range') {
+    <form
+      class="range"
+      (submit)="$event.preventDefault(); setRange(fromInput.value, toInput.value)"
+    >
+      <label>From <input type="date" [value]="range()[0]" #fromInput /></label>
+      <label>To <input type="date" [value]="range()[1]" #toInput /></label>
+      <button type="submit" class="primary">Show</button>
+    </form>
+  } @else {
+    <a [routerLink]="link(previous())" [attr.aria-label]="'Previous ' + mode()">‹</a>
+    <h2>{{ heading() }}</h2>
+    <a [routerLink]="link(next())" [attr.aria-label]="'Next ' + mode()">›</a>
+    @if (!isCurrent()) {
+      <a [routerLink]="link(today)" class="current">{{
+        mode() === 'week' ? 'This week' : 'This month'
+      }}</a>
+    }
+  }
+  <a
+    routerLink="/range"
+    [queryParams]="{ from: range()[0], to: range()[1] }"
+    class="custom"
+    [class.hidden]="mode() === 'range'"
+    >Custom range</a
+  >
+</nav>
+
+@if (error(); as error) {
+  <p class="error" role="alert">{{ error }}</p>
+}
+
+@if (report(); as r) {
+  <div class="layout">
+    <section [attr.aria-label]="mode() === 'month' ? 'Calendar' : 'Time per task and day'">
+      @if (mode() === 'month') {
+        <div class="calendar" role="table" aria-label="Hours per day">
+          <div class="row head" role="row">
+            @for (name of weekdayNames(); track $index) {
+              <span role="columnheader">{{ name }}</span>
+            }
+          </div>
+          @for (week of calendar(); track $index) {
+            <div class="row" role="row">
+              @for (cell of week; track cell.date) {
+                <a
+                  role="cell"
+                  class="cell"
+                  [class.out]="!cell.inMonth"
+                  [class.today]="cell.date === today"
+                  [routerLink]="['/day', cell.date]"
+                  [style.--heat]="cell.intensity"
+                  [attr.aria-label]="cell.date + ': ' + hm(cell.seconds)"
+                >
+                  <span class="num">{{ cell.day }}</span>
+                  @if (cell.seconds) {
+                    <span class="sum">{{ hm(cell.seconds) }}</span>
+                  }
+                </a>
+              }
+            </div>
+          }
+        </div>
+      } @else if (r.by_task.length) {
+        <div class="scroll">
+          <table class="grid">
+            <thead>
+              <tr>
+                <th scope="col">Task</th>
+                @for (d of r.days; track d.date) {
+                  <th scope="col">
+                    <a [routerLink]="['/day', d.date]">{{ shortDay(d.date) }}</a>
+                  </th>
+                }
+                <th scope="col">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of weekRows(); track row.title + $index) {
+                <tr>
+                  <th scope="row">{{ row.title }}</th>
+                  @for (s of row.days; track $index) {
+                    <td [class.zero]="!s">{{ s ? hm(s) : '–' }}</td>
+                  }
+                  <td class="total">{{ hm(row.total) }}</td>
+                </tr>
+              }
+            </tbody>
+            <tfoot>
+              <tr>
+                <th scope="row">Total</th>
+                @for (d of r.days; track d.date) {
+                  <td>{{ hm(d.total_seconds) }}</td>
+                }
+                <td class="total">{{ hm(r.total_seconds) }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      } @else {
+        <p class="muted empty">Nothing tracked in this period.</p>
+      }
+    </section>
+
+    <aside aria-label="Totals">
+      <p class="total-line">
+        Total <strong>{{ hm(r.total_seconds) }}</strong>
+      </p>
+      @if (mode() === 'month' && r.by_task.length) {
+        <ul class="list">
+          @for (t of r.by_task; track t.task_id) {
+            <li>
+              <span class="name">{{ t.title }}</span><span class="num">{{ hm(t.seconds) }}</span>
+            </li>
+          }
+        </ul>
+      }
+      @if (r.by_tag.length) {
+        <h3>Hours per tag</h3>
+        <ul class="list">
+          @for (t of r.by_tag; track t.tag) {
+            <li>
+              <span class="name">{{ t.tag ? '#' + t.tag : 'untagged' }}</span>
+              <span class="num">{{ hours(t.seconds) }}</span>
+            </li>
+          }
+        </ul>
+        <p class="muted hint">A task with several tags counts fully for each of them.</p>
+      }
+    </aside>
+  </div>
+}

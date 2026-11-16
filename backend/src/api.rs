@@ -5,7 +5,8 @@
 use axum::Json;
 use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{StatusCode, header};
+use axum::response::IntoResponse;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -16,8 +17,10 @@ use jiff::civil::{Date, Time};
 use crate::corrections::{EntryPatch, EntryView, Forgotten};
 use crate::domain::{
     ChangeReason, DomainError, NewTask, Running, StatusFilter, TagView, TaskPatch, TaskStatus,
-    TaskView, UserData,
+    TaskView, UserData, WeekStart,
 };
+use crate::reports::Report;
+use crate::store::yaml::{export_yaml, import_yaml};
 
 #[derive(Debug, Deserialize)]
 pub struct ListQuery {
@@ -383,6 +386,9 @@ pub struct SettingsView {
     /// `HH:MM`
     workday_end: String,
     forgotten_after_hours: u8,
+    week_start: WeekStart,
+    /// Default CSV rounding in minutes: 0, 5 or 15.
+    csv_rounding: u8,
 }
 
 fn settings_view(d: &UserData) -> SettingsView {
@@ -390,6 +396,8 @@ fn settings_view(d: &UserData) -> SettingsView {
         timezone: d.settings.timezone.clone(),
         workday_end: d.settings.workday_end.strftime("%H:%M").to_string(),
         forgotten_after_hours: d.settings.forgotten_after_hours,
+        week_start: d.settings.week_start,
+        csv_rounding: d.settings.csv_rounding,
     }
 }
 
@@ -403,6 +411,10 @@ pub struct SettingsPatch {
     workday_end: Option<String>,
     #[serde(default)]
     forgotten_after_hours: Option<u8>,
+    #[serde(default)]
+    week_start: Option<WeekStart>,
+    #[serde(default)]
+    csv_rounding: Option<u8>,
 }
 
 pub async fn get_settings(
@@ -435,17 +447,134 @@ pub async fn put_settings(
                 d.set_timezone(tz)?;
             }
             d.set_workday(workday_end, input.forgotten_after_hours)?;
+            d.set_preferences(input.week_start, input.csv_rounding)?;
             Ok(settings_view(d))
         })
         .await?;
     Ok(Json(view))
 }
+/// Totals for the local days `from..=to` (week, month or any range up to 366 days).
+pub async fn get_report(
+    State(state): State<AppState>,
+    user: User,
+    Query(q): Query<RangeQuery>,
+) -> Result<Json<Report>, ApiError> {
+    let now = Timestamp::now();
+    let report = state
+        .store
+        .read(&user.key, |d| d.report(q.from, q.to, now))
+        .await??;
+    Ok(Json(report))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CsvQuery {
+    from: Date,
+    to: Date,
+    /// Minutes: 0, 5 or 15; default from the settings.
+    #[serde(default)]
+    round: Option<u8>,
+}
+
+pub async fn export_csv(
+    State(state): State<AppState>,
+    user: User,
+    Query(q): Query<CsvQuery>,
+) -> Result<impl IntoResponse, ApiError> {
+    let now = Timestamp::now();
+    let csv = state
+        .store
+        .read(&user.key, |d| {
+            d.csv(
+                q.from,
+                q.to,
+                q.round.unwrap_or(d.settings.csv_rounding),
+                now,
+            )
+        })
+        .await??;
+    let name = format!("clockopus-{}-{}.csv", q.from, q.to);
+    Ok(download(csv, "text/csv; charset=utf-8", &name))
+}
+
+/// Everything of the user as one YAML document (settings, tags, tasks with entries).
+pub async fn export_data(
+    State(state): State<AppState>,
+    user: User,
+) -> Result<impl IntoResponse, ApiError> {
+    let now = Timestamp::now();
+    let (yaml, date) = state
+        .store
+        .read(&user.key, |d| {
+            let date = now.to_zoned_datetime(d.settings.time_zone()).date();
+            (export_yaml(d, now), date)
+        })
+        .await?;
+    let yaml = yaml.map_err(|e| {
+        tracing::error!(error = format!("{e:#}"), "export failed");
+        ApiError::Internal
+    })?;
+    Ok(download(
+        yaml,
+        "application/yaml; charset=utf-8",
+        &format!("clockopus-export-{date}.yaml"),
+    ))
+}
+
+/// Imports an export into an empty account; anything else is refused so nothing is mixed.
+pub async fn import_data(
+    State(state): State<AppState>,
+    user: User,
+    body: String,
+) -> Result<StatusCode, ApiError> {
+    let imported = import_yaml(&body)?;
+    state
+        .store
+        .write(&user.key, |d| {
+            if !d.tasks.is_empty() || !d.tags.is_empty() {
+                return Err(DomainError::Invalid {
+                    code: "account_not_empty",
+                    message:
+                        "Import works only into an empty account. Delete the current data first."
+                            .into(),
+                });
+            }
+            *d = imported;
+            Ok(())
+        })
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Deletes all data of the user (`DELETE /me`).
+pub async fn delete_me(State(state): State<AppState>, user: User) -> Result<StatusCode, ApiError> {
+    state.store.delete_user(&user.key).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+fn download(body: String, content_type: &'static str, filename: &str) -> axum::response::Response {
+    (
+        [
+            (header::CONTENT_TYPE, content_type.to_owned()),
+            (
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{filename}\""),
+            ),
+            (header::CACHE_CONTROL, "no-store".to_owned()),
+        ],
+        body,
+    )
+        .into_response()
+}
+
 #[cfg(test)]
 mod tests {
     use crate::app::tests::{call, test_app};
     use crate::config::AuthMode;
     use axum::http::StatusCode;
+    use http_body_util::BodyExt;
     use serde_json::Value;
+    use tower::ServiceExt;
 
     fn json(s: &str) -> Value {
         serde_json::from_str(s).unwrap_or_else(|e| panic!("{e}: {s}"))
@@ -599,7 +728,7 @@ mod tests {
         let (_, body) = call(&t.app, "GET", "/api/v1/me/settings", None).await;
         assert_eq!(
             body,
-            r#"{"timezone":null,"workday_end":"17:00","forgotten_after_hours":10}"#
+            r#"{"timezone":null,"workday_end":"17:00","forgotten_after_hours":10,"week_start":"monday","csv_rounding":0}"#
         );
         let (status, body) = call(
             &t.app,
@@ -611,18 +740,18 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(
             body,
-            r#"{"timezone":"Europe/Berlin","workday_end":"17:00","forgotten_after_hours":10}"#
+            r#"{"timezone":"Europe/Berlin","workday_end":"17:00","forgotten_after_hours":10,"week_start":"monday","csv_rounding":0}"#
         );
         let (_, body) = call(
             &t.app,
             "PUT",
             "/api/v1/me/settings",
-            Some(r#"{"workday_end":"16:30","forgotten_after_hours":8}"#),
+            Some(r#"{"workday_end":"16:30","forgotten_after_hours":8,"week_start":"monday","csv_rounding":0}"#),
         )
         .await;
         assert_eq!(
             body,
-            r#"{"timezone":"Europe/Berlin","workday_end":"16:30","forgotten_after_hours":8}"#
+            r#"{"timezone":"Europe/Berlin","workday_end":"16:30","forgotten_after_hours":8,"week_start":"monday","csv_rounding":0}"#
         );
         let mut rejected = 0;
         for (input, code) in [
@@ -639,7 +768,7 @@ mod tests {
         let (_, body) = call(&t.app, "GET", "/api/v1/me/settings", None).await;
         assert_eq!(
             body,
-            r#"{"timezone":"Europe/Berlin","workday_end":"16:30","forgotten_after_hours":8}"#
+            r#"{"timezone":"Europe/Berlin","workday_end":"16:30","forgotten_after_hours":8,"week_start":"monday","csv_rounding":0}"#
         );
     }
 
@@ -826,5 +955,172 @@ tasks:
         assert!(json(&body)["forgotten"].is_null());
         let (_, body) = call(&t.app, "GET", "/api/v1/timer", None).await;
         assert!(json(&body)["forgotten"].is_null());
+    }
+
+    #[tokio::test]
+    async fn week_start_and_csv_rounding_are_settings() {
+        let t = test_app(AuthMode::None);
+        let (status, body) = call(
+            &t.app,
+            "PUT",
+            "/api/v1/me/settings",
+            Some(r#"{"week_start":"sunday","csv_rounding":15}"#),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(json(&body)["week_start"], "sunday");
+        assert_eq!(json(&body)["csv_rounding"], 15);
+        let (status, body) = call(
+            &t.app,
+            "PUT",
+            "/api/v1/me/settings",
+            Some(r#"{"csv_rounding":10}"#),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(json(&body)["error"], "round_invalid");
+    }
+
+    /// One task with an entry on 2026-11-10 08:00–09:30 UTC (no time zone set: days in UTC).
+    async fn with_entry(app: &axum::Router) -> String {
+        let task = task_id(app).await;
+        let (status, _) = call(
+            app,
+            "POST",
+            &format!("/api/v1/tasks/{task}/entries"),
+            Some(ADD_ENTRY),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+        task
+    }
+
+    #[tokio::test]
+    async fn report_for_a_range() {
+        let t = test_app(AuthMode::None);
+        let task = with_entry(&t.app).await;
+        let (status, body) = call(
+            &t.app,
+            "GET",
+            "/api/v1/reports?from=2026-11-09&to=2026-11-11",
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let r = json(&body);
+        assert_eq!(r["total_seconds"], 5400);
+        assert_eq!(r["days"].as_array().unwrap().len(), 3);
+        assert_eq!(r["days"][1]["date"], "2026-11-10");
+        assert_eq!(r["days"][1]["by_task"][0]["task_id"], task.as_str());
+        assert_eq!(r["by_task"][0]["title"], "Write notes");
+        assert_eq!(r["by_tag"][0]["tag"], serde_json::Value::Null);
+        let (status, _) = call(
+            &t.app,
+            "GET",
+            "/api/v1/reports?from=2026-11-11&to=2026-11-09",
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn csv_download() {
+        let t = test_app(AuthMode::None);
+        with_entry(&t.app).await;
+        let res = t
+            .app
+            .clone()
+            .oneshot(
+                axum::http::Request::get(
+                    "/api/v1/export.csv?from=2026-11-10&to=2026-11-10&round=15",
+                )
+                .body(axum::body::Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(res.headers()["content-type"], "text/csv; charset=utf-8");
+        assert_eq!(
+            res.headers()["content-disposition"],
+            "attachment; filename=\"clockopus-2026-11-10-2026-11-10.csv\""
+        );
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(
+            String::from_utf8(body.to_vec()).unwrap(),
+            "date,task,tags,start,end,duration_minutes,note\n2026-11-10,Write notes,,08:00,09:30,90,call with Anna\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn export_import_round_trip_into_an_empty_account_only() {
+        let source = test_app(AuthMode::None);
+        call(
+            &source.app,
+            "PUT",
+            "/api/v1/me/settings",
+            Some(r#"{"timezone":"Europe/Berlin"}"#),
+        )
+        .await;
+        with_entry(&source.app).await;
+        let (status, export) = call(&source.app, "GET", "/api/v1/export", None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(export.starts_with("# clockopus export."), "{export}");
+        assert!(export.contains("title: Write notes"), "{export}");
+        assert!(
+            export.contains(r#"start: "2026-11-10T09:00:00+01:00""#),
+            "{export}"
+        );
+
+        // Not into an account with data.
+        let (status, body) = call(&source.app, "POST", "/api/v1/import", Some(&export)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(json(&body)["error"], "account_not_empty");
+
+        let target = test_app(AuthMode::None);
+        let (status, body) = call(&target.app, "POST", "/api/v1/import", Some(&export)).await;
+        assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+        let (_, a) = call(&source.app, "GET", "/api/v1/tasks?status=all", None).await;
+        let (_, b) = call(&target.app, "GET", "/api/v1/tasks?status=all", None).await;
+        assert_eq!(json(&a)[0]["id"], json(&b)[0]["id"]);
+        assert_eq!(json(&a)[0]["total_seconds"], json(&b)[0]["total_seconds"]);
+        let (_, settings) = call(&target.app, "GET", "/api/v1/me/settings", None).await;
+        assert_eq!(json(&settings)["timezone"], "Europe/Berlin");
+        // And on disk.
+        assert!(target.data.path().join("local/tasks.yaml").exists());
+    }
+
+    #[tokio::test]
+    async fn a_broken_import_is_the_uploaders_problem() {
+        let t = test_app(AuthMode::None);
+        let mut checked = 0;
+        for body in [
+            "not: [yaml",
+            "version: 1\nexported_at: x\n",
+            "version: 9\nexported_at: x\nsettings: {version: 1}\n",
+        ] {
+            let (status, res) = call(&t.app, "POST", "/api/v1/import", Some(body)).await;
+            assert_eq!(status, StatusCode::BAD_REQUEST, "{body}: {res}");
+            assert_eq!(json(&res)["error"], "import_invalid", "{body}");
+            checked += 1;
+        }
+        assert_eq!(checked, 3);
+        let (_, tasks) = call(&t.app, "GET", "/api/v1/tasks?status=all", None).await;
+        assert_eq!(tasks, "[]");
+    }
+
+    #[tokio::test]
+    async fn deleting_the_account_removes_everything() {
+        let t = test_app(AuthMode::None);
+        with_entry(&t.app).await;
+        assert!(t.data.path().join("local").exists());
+        let (status, _) = call(&t.app, "DELETE", "/api/v1/me", None).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        assert!(!t.data.path().join("local").exists(), "files gone");
+        let (_, tasks) = call(&t.app, "GET", "/api/v1/tasks?status=all", None).await;
+        assert_eq!(tasks, "[]", "memory gone");
+        let (_, tags) = call(&t.app, "GET", "/api/v1/tags", None).await;
+        assert_eq!(tags, "[]");
     }
 }
