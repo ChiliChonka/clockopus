@@ -1,0 +1,76 @@
+:host {
+  display: grid;
+  gap: 16px;
+  max-width: 760px;
+}
+section {
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+h2 {
+  margin: 0 0 12px;
+  font-size: 1.15rem;
+}
+h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+p {
+  margin: 0 0 8px;
+}
+form {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px 16px;
+}
+form.inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+}
+label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.9rem;
+}
+input,
+select {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 6px 8px;
+  font: inherit;
+}
+small {
+  color: var(--text-muted);
+}
+.warn {
+  color: var(--running);
+}
+.actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.data {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.ok {
+  color: var(--text-muted);
+}
+.error {
+  color: var(--danger);
+}
+.file input {
+  max-width: 100%;
+}

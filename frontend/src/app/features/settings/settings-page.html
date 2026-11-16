@@ -1,0 +1,118 @@
+<section aria-labelledby="prefs">
+  <h2 id="prefs">Settings</h2>
+  <form (submit)="$event.preventDefault(); saveSettings()">
+    <label>
+      Time zone
+      <input
+        type="text"
+        list="zones"
+        [value]="timezone()"
+        (input)="timezone.set(tz.value)"
+        #tz
+        autocomplete="off"
+      />
+      <datalist id="zones">
+        @for (z of zones; track z) {
+          <option [value]="z"></option>
+        }
+      </datalist>
+      @if (zoneDiffers()) {
+        <small class="warn"
+          >Your browser uses {{ browserZone }}; times you enter are read in the browser's
+          zone.</small
+        >
+      }
+    </label>
+    <label>
+      Workday ends at
+      <input type="time" [value]="workdayEnd()" (input)="workdayEnd.set(we.value)" #we />
+      <small>Suggested end for a forgotten timer.</small>
+    </label>
+    <label>
+      Forgotten after (hours)
+      <input
+        type="number"
+        min="1"
+        max="24"
+        [value]="forgottenAfter()"
+        (input)="forgottenAfter.set(+fa.value)"
+        #fa
+      />
+    </label>
+    <label>
+      Week starts on
+      <select (change)="weekStart.set($any(ws.value))" #ws>
+        <option value="monday" [selected]="weekStart() === 'monday'">Monday</option>
+        <option value="sunday" [selected]="weekStart() === 'sunday'">Sunday</option>
+      </select>
+    </label>
+    <label>
+      CSV rounding
+      <select (change)="csvRounding.set(+cr.value)" #cr>
+        <option value="0" [selected]="csvRounding() === 0">Exact minutes</option>
+        <option value="5" [selected]="csvRounding() === 5">5 minutes</option>
+        <option value="15" [selected]="csvRounding() === 15">15 minutes</option>
+      </select>
+    </label>
+    <div class="actions">
+      <button type="submit" class="primary">Save settings</button>
+      @if (settingsNotice(); as n) {
+        <span [class]="n.kind" role="status">{{ n.text }}</span>
+      }
+    </div>
+  </form>
+</section>
+
+<section aria-labelledby="csv">
+  <h2 id="csv">CSV export</h2>
+  <p class="muted">One row per entry and day: date, task, tags, start, end, minutes, note.</p>
+  <form class="inline" (submit)="$event.preventDefault(); downloadCsv()">
+    <label
+      >From <input type="date" [value]="csvFrom()" (input)="csvFrom.set(cf.value)" #cf
+    /></label>
+    <label>To <input type="date" [value]="csvTo()" (input)="csvTo.set(ct.value)" #ct /></label>
+    <label>
+      Rounding
+      <select (change)="csvRound.set(+cro.value)" #cro>
+        <option value="0" [selected]="csvRound() === 0">Exact</option>
+        <option value="5" [selected]="csvRound() === 5">5 min</option>
+        <option value="15" [selected]="csvRound() === 15">15 min</option>
+      </select>
+    </label>
+    <button type="submit" [disabled]="busy()">Download CSV</button>
+  </form>
+</section>
+
+<section aria-labelledby="data">
+  <h2 id="data">Your data</h2>
+  <div class="data">
+    <div>
+      <h3>Export</h3>
+      <p class="muted">Everything as one readable YAML file.</p>
+      <button type="button" (click)="downloadExport()" [disabled]="busy()">Export my data</button>
+    </div>
+    <div>
+      <h3>Import</h3>
+      <p class="muted">Only into an empty account.</p>
+      <label class="file">
+        <span class="sr-only">Import file</span>
+        <input
+          type="file"
+          accept=".yaml,.yml,application/yaml,text/yaml"
+          (change)="importFile(file)"
+          #file
+        />
+      </label>
+    </div>
+    <div>
+      <h3>Delete account</h3>
+      <p class="muted">Removes all tasks, times, tags and settings.</p>
+      <button type="button" class="danger" (click)="deleteAccount()" [disabled]="busy()">
+        Delete my account
+      </button>
+    </div>
+  </div>
+  @if (dataNotice(); as n) {
+    <p [class]="n.kind" role="status">{{ n.text }}</p>
+  }
+</section>

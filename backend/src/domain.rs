@@ -88,10 +88,23 @@ pub struct Settings {
     pub workday_end: jiff::civil::Time,
     /// R7: a timer running longer than this is forgotten.
     pub forgotten_after_hours: u8,
+    /// First day of a week in the week report.
+    pub week_start: WeekStart,
+    /// Default rounding of CSV rows in minutes: 0 (off), 5 or 15.
+    pub csv_rounding: u8,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WeekStart {
+    #[default]
+    Monday,
+    Sunday,
 }
 
 pub const DEFAULT_WORKDAY_END: jiff::civil::Time = jiff::civil::Time::constant(17, 0, 0, 0);
 pub const DEFAULT_FORGOTTEN_AFTER_HOURS: u8 = 10;
+pub const CSV_ROUNDINGS: [u8; 3] = [0, 5, 15];
 
 impl Default for Settings {
     fn default() -> Self {
@@ -99,6 +112,8 @@ impl Default for Settings {
             timezone: None,
             workday_end: DEFAULT_WORKDAY_END,
             forgotten_after_hours: DEFAULT_FORGOTTEN_AFTER_HOURS,
+            week_start: WeekStart::Monday,
+            csv_rounding: 0,
         }
     }
 }

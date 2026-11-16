@@ -50,6 +50,22 @@ describe('SessionService', () => {
     http.expectOne('/api/v1/me').flush({ id: 'local', name: 'Local user' });
     await done;
     expect(service.me()?.id).toBe('local');
+    expect(service.settings()?.timezone).toBe('America/New_York');
+  });
+
+  it('saves settings and keeps the answer', async () => {
+    const done = service.saveSettings({ week_start: 'sunday' });
+    const req = http.expectOne({ method: 'PUT', url: '/api/v1/me/settings' });
+    expect(JSON.stringify(req.request.body)).toBe('{"week_start":"sunday"}');
+    req.flush({
+      timezone: 'Europe/Berlin',
+      workday_end: '17:00',
+      forgotten_after_hours: 10,
+      week_start: 'sunday',
+      csv_rounding: 0,
+    });
+    await done;
+    expect(service.settings()?.week_start).toBe('sunday');
   });
 
   it('reports an unreachable server', async () => {

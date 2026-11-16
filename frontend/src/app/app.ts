@@ -20,6 +20,16 @@ import { SessionService } from './core/session.service';
           >Board</a
         >
         <a routerLink="/day" routerLinkActive="active" ariaCurrentWhenActive="page">Day</a>
+        <a routerLink="/week" routerLinkActive="active" ariaCurrentWhenActive="page">Week</a>
+        <a routerLink="/month" routerLinkActive="active" ariaCurrentWhenActive="page">Month</a>
+        <a
+          routerLink="/settings"
+          routerLinkActive="active"
+          ariaCurrentWhenActive="page"
+          aria-label="Settings"
+          title="Settings"
+          >⚙</a
+        >
       </nav>
       @if (session.me(); as me) {
         <span class="user">{{ me.name }}</span>
@@ -64,6 +74,13 @@ import { SessionService } from './core/session.service';
       display: flex;
       gap: 4px;
       margin-right: auto;
+      min-width: 0;
+      overflow-x: auto;
+    }
+    @media (max-width: 480px) {
+      .brand span {
+        display: none;
+      }
     }
     nav a {
       padding: 4px 10px;

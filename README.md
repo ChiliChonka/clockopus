@@ -8,9 +8,10 @@
 
 ---
 
-> **Status:** early development. Tasks, the timer, quick add with `#tags`, corrections with
-> history, the forgotten-timer prompt and the day timeline work (milestones M2–M3); week and month
-> reports, CSV and export come next.
+> **Status:** early development. Everything for a single user works with the YAML storage
+> (milestones M1–M4): tasks and timer, quick add with `#tags`, corrections with history, the
+> forgotten-timer prompt, day/week/month reports, CSV and data export/import. PostgreSQL and
+> sign-in with OpenID Connect come next, then the Helm chart.
 > What is planned and in which order: [docs/SPEC.md](docs/SPEC.md), architecture:
 > [docs/adr/0001-architecture.md](docs/adr/0001-architecture.md).
 

@@ -3,6 +3,7 @@ mod app;
 mod config;
 mod corrections;
 mod domain;
+mod reports;
 mod store;
 
 use anyhow::Context;

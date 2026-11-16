@@ -1,0 +1,171 @@
+:host {
+  display: grid;
+  gap: 16px;
+}
+.periods {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.periods h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+.periods a {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 1.3rem;
+  padding: 0 6px;
+}
+.periods a.current,
+.periods a.custom {
+  font-size: 0.95rem;
+}
+.periods a.current {
+  margin-left: auto;
+}
+.periods a.custom.hidden {
+  display: none;
+}
+.range,
+.range label {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.range input {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 5px 8px;
+}
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 720px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.scroll {
+  overflow-x: auto;
+}
+.grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.grid th,
+.grid td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  white-space: nowrap;
+}
+.grid th[scope='row'],
+.grid thead th:first-child {
+  text-align: left;
+  white-space: normal;
+}
+.grid thead a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.grid .zero {
+  color: var(--text-muted);
+}
+.grid .total,
+.grid tfoot {
+  font-weight: 600;
+}
+.calendar {
+  display: grid;
+  gap: 4px;
+}
+.row {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.head span {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+.cell {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 64px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  text-decoration: none;
+  background: color-mix(in srgb, var(--accent) calc(var(--heat, 0) * 45%), var(--surface));
+  font-variant-numeric: tabular-nums;
+}
+.cell.out {
+  opacity: 0.45;
+}
+.cell.today {
+  outline: 2px solid var(--running);
+}
+.num {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.sum {
+  align-self: end;
+  font-weight: 600;
+}
+aside {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.total-line {
+  margin: 0 0 8px;
+}
+h3 {
+  margin: 16px 0 8px;
+  font-size: 1rem;
+}
+.list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.list li {
+  display: flex;
+  gap: 8px;
+}
+.list .name {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.list .num {
+  font-size: inherit;
+  color: inherit;
+}
+.hint {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+}
+.empty {
+  padding: 32px 0;
+}
+.error {
+  margin: 0;
+  color: var(--danger);
+}

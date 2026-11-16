@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { Settings } from './wire';
+import { Settings, SettingsPatch } from './wire';
 
 /** Mirrors `PublicConfig` in backend/src/app.rs. */
 export type PublicConfig = { auth: 'none' } | { auth: 'oidc'; issuer: string; client_id: string };
@@ -20,6 +20,7 @@ export class SessionService {
   readonly config = signal<PublicConfig | null>(null);
   /** Set last: once there is a user, the settings (time zone) are in place too. */
   readonly me = signal<Me | null>(null);
+  readonly settings = signal<Settings | null>(null);
   readonly error = signal<string | null>(null);
 
   /** The browser's IANA time zone; replaceable in tests. */
@@ -39,9 +40,17 @@ export class SessionService {
   /** "Today" is computed in the user's time zone; the first visit sends the browser's. */
   private async ensureTimeZone(): Promise<void> {
     const settings = await firstValueFrom(this.http.get<Settings>('/api/v1/me/settings'));
+    this.settings.set(settings);
     if (settings.timezone) return;
     const timezone = this.browserTimeZone();
     if (!timezone) return;
-    await firstValueFrom(this.http.put<Settings>('/api/v1/me/settings', { timezone }));
+    this.settings.set(
+      await firstValueFrom(this.http.put<Settings>('/api/v1/me/settings', { timezone })),
+    );
+  }
+
+  /** Saves the given settings; throws the HTTP error so the form can show it. */
+  async saveSettings(patch: SettingsPatch): Promise<void> {
+    this.settings.set(await firstValueFrom(this.http.put<Settings>('/api/v1/me/settings', patch)));
   }
 }

@@ -53,6 +53,44 @@ export function relativeDayTime(iso: string, now: Date): string {
   return `${label} ${localTime(d)}`;
 }
 
+/** First and last day of the week containing `date`. */
+export function weekRange(date: string, weekStart: 'monday' | 'sunday'): [string, string] {
+  const day = startOfDay(date).getDay(); // 0 = Sunday
+  const back = weekStart === 'monday' ? (day + 6) % 7 : day;
+  const first = addDays(date, -back);
+  return [first, addDays(first, 6)];
+}
+
+/** First and last day of the month containing `date`. */
+export function monthRange(date: string): [string, string] {
+  const d = startOfDay(date);
+  const first = new Date(d.getFullYear(), d.getMonth(), 1);
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  return [localDate(first), localDate(last)];
+}
+
+/** Whole weeks covering the month of `date`, for a calendar grid. */
+export function monthGrid(date: string, weekStart: 'monday' | 'sunday'): string[][] {
+  const [first, last] = monthRange(date);
+  const [gridStart] = weekRange(first, weekStart);
+  const [, gridEnd] = weekRange(last, weekStart);
+  const weeks: string[][] = [];
+  for (let d = gridStart; d <= gridEnd; d = addDays(d, 7)) {
+    weeks.push(Array.from({ length: 7 }, (_, i) => addDays(d, i)));
+  }
+  return weeks;
+}
+
+/** `Mon 16` column headings. */
+export function shortDay(date: string): string {
+  return startOfDay(date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' });
+}
+
+/** `November 2026`. */
+export function monthName(date: string): string {
+  return startOfDay(date).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+}
+
 /** `Monday, 16 November 2026` for headings. */
 export function longDate(date: string): string {
   return startOfDay(date).toLocaleDateString('en-GB', {

@@ -2,13 +2,36 @@ import {
   addDays,
   fromLocalInput,
   localDate,
+  monthGrid,
+  monthRange,
   relativeDayTime,
   startOfDay,
   toLocalInput,
+  weekRange,
 } from './local-time';
 
 // Expectations are built from local Dates, so the tests hold in any time zone.
 describe('local time', () => {
+  it('finds the week of a date for both week starts', () => {
+    // 2026-11-18 is a Wednesday.
+    expect(weekRange('2026-11-18', 'monday')).toEqual(['2026-11-16', '2026-11-22']);
+    expect(weekRange('2026-11-18', 'sunday')).toEqual(['2026-11-15', '2026-11-21']);
+    expect(weekRange('2026-11-16', 'monday')).toEqual(['2026-11-16', '2026-11-22']);
+    expect(weekRange('2026-11-22', 'monday')).toEqual(['2026-11-16', '2026-11-22']);
+    expect(weekRange('2026-11-22', 'sunday')).toEqual(['2026-11-22', '2026-11-28']);
+  });
+
+  it('finds months and lays out whole weeks', () => {
+    expect(monthRange('2026-02-14')).toEqual(['2026-02-01', '2026-02-28']);
+    expect(monthRange('2026-11-30')).toEqual(['2026-11-01', '2026-11-30']);
+    const grid = monthGrid('2026-11-18', 'monday');
+    expect(grid.length).toBe(6); // 26 Oct – 6 Dec
+    expect(grid[0][0]).toBe('2026-10-26');
+    expect(grid[5][6]).toBe('2026-12-06');
+    expect(grid.every((w) => w.length === 7)).toBe(true);
+    expect(monthGrid('2026-11-18', 'sunday')[0][0]).toBe('2026-11-01');
+  });
+
   it('round-trips datetime-local values', () => {
     const d = new Date(2026, 10, 17, 9, 5);
     expect(toLocalInput(d.toISOString())).toBe('2026-11-17T09:05');
