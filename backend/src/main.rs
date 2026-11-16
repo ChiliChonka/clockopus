@@ -1,5 +1,6 @@
 mod api;
 mod app;
+mod auth;
 mod config;
 mod corrections;
 mod domain;
@@ -24,7 +25,6 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = Config::from_env()?;
-    config.ensure_supported()?;
     if config.auth == AuthMode::None {
         warn!("CLOCKOPUS_AUTH=none: no sign-in, everyone who reaches this server is the same user");
     }

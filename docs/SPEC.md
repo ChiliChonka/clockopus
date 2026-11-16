@@ -245,6 +245,22 @@ in whole seconds. Errors: `{"error": "<stable code>", "message": "<for people>"}
 | `GET /export`, `POST /import` | YAML download of all data; import of such a file into an empty account (`204`; `400 account_not_empty` / `import_invalid`) |
 | `GET /healthz`, `GET /readyz` | Probes (outside `/api/v1`) |
 
+### 7.1 Sign-in (auth mode `oidc`)
+
+- **Frontend:** Authorization Code flow with PKCE as a public client (`angular-oauth2-oidc`),
+  scopes `openid profile email`, redirect to the app's origin; the refresh token keeps the
+  session; the page that was open before sign-in opens again (a path inside the app only).
+  A `401` from the API starts a new sign-in. “Sign out” ends the session at the provider.
+- **Backend** checks every bearer token itself: signature with the issuer's keys (discovery
+  `jwks_uri`, cached; an unknown key id reloads them at most every 30 s), asymmetric algorithms
+  only (no `HS*`, no `none`), `iss`, `exp`/`nbf` with 30 s leeway, `sub`, and that the token is
+  for clockopus: `aud` contains `CLOCKOPUS_OIDC_AUDIENCE` **or** `azp` equals it (Keycloak puts
+  the client into `azp`). A missing or rejected token is `401` with `WWW-Authenticate: Bearer`;
+  an unreachable issuer without cached keys is `503 auth_unavailable`.
+- **User:** identified by `sub`; used as is when it is a safe name (letters, digits, `-`, `_`,
+  up to 64 characters — a Keycloak user id), otherwise as a UUID derived from it. The display
+  name comes from `name`, `preferred_username` or `email`. The first request creates the account.
+
 ## 8. Configuration
 
 | Variable | Default | Meaning |

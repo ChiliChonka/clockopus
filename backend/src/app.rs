@@ -4,17 +4,18 @@ use std::sync::Arc;
 
 use axum::extract::rejection::JsonRejection;
 use axum::extract::{FromRequestParts, State};
-use axum::http::StatusCode;
 use axum::http::request::Parts;
+use axum::http::{StatusCode, header};
 use axum::response::IntoResponse;
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use serde::Serialize;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
-use tracing::error;
+use tracing::{debug, error};
 
 use crate::api;
+use crate::auth::{AuthError, OidcVerifier};
 use crate::config::{AuthMode, Config, Storage};
 use crate::domain::DomainError;
 use crate::store::{PgStore, Store, StoreError, YamlStore};
@@ -23,6 +24,8 @@ use crate::store::{PgStore, Store, StoreError, YamlStore};
 pub struct AppState {
     pub config: Arc<Config>,
     pub store: Arc<Store>,
+    /// Set in auth mode `oidc`.
+    pub auth: Option<Arc<OidcVerifier>>,
 }
 
 /// Opens the configured backend; PostgreSQL connects and applies the migrations.
@@ -39,9 +42,19 @@ pub fn router(config: Config, store: Store) -> Router {
     let index = config.static_dir.join("index.html");
     // Unknown paths fall back to index.html, so deep links into the app work.
     let spa = ServeDir::new(&config.static_dir).fallback(ServeFile::new(index));
+    let auth = match &config.auth {
+        AuthMode::None => None,
+        AuthMode::Oidc {
+            issuer, audience, ..
+        } => Some(Arc::new(
+            // Only building the HTTP client can fail here; there is no network access yet.
+            OidcVerifier::new(issuer, audience).expect("HTTP client for the OIDC issuer"),
+        )),
+    };
     let state = AppState {
         config: Arc::new(config),
         store: Arc::new(store),
+        auth,
     };
 
     let api = Router::new()
@@ -129,14 +142,38 @@ pub struct User {
 impl FromRequestParts<AppState> for User {
     type Rejection = ApiError;
 
-    async fn from_request_parts(_: &mut Parts, state: &AppState) -> Result<Self, ApiError> {
-        match state.config.auth {
-            AuthMode::None => Ok(User {
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, ApiError> {
+        let Some(verifier) = &state.auth else {
+            return Ok(User {
                 key: "local".to_owned(),
                 name: "Local user".to_owned(),
+            });
+        };
+        let token = parts
+            .headers
+            .get(header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| {
+                v.strip_prefix("Bearer ")
+                    .or_else(|| v.strip_prefix("bearer "))
+            })
+            .map(str::trim)
+            .filter(|t| !t.is_empty());
+        let result = match token {
+            Some(token) => verifier.verify(token).await,
+            None => Err(AuthError::Missing),
+        };
+        match result {
+            Ok(id) => Ok(User {
+                key: id.key,
+                name: id.name,
             }),
-            // Token validation arrives with milestone M5; until then nothing is served as anyone.
-            AuthMode::Oidc { .. } => Err(ApiError::Unauthorized),
+            Err(AuthError::Missing) => Err(ApiError::Unauthorized),
+            Err(AuthError::Invalid(reason)) => {
+                debug!(reason, "bearer token rejected");
+                Err(ApiError::Unauthorized)
+            }
+            Err(AuthError::Unavailable) => Err(ApiError::Unavailable),
         }
     }
 }
@@ -179,6 +216,8 @@ pub enum ApiError {
         entry_id: uuid::Uuid,
     },
     Unauthorized,
+    /// The sign-in provider cannot be reached.
+    Unavailable,
     Internal,
 }
 
@@ -241,7 +280,24 @@ impl IntoResponse for ApiError {
             ApiError::Invalid { code, message } => (StatusCode::BAD_REQUEST, code, Some(message)),
             ApiError::Conflict { .. } => unreachable!("handled above"),
             ApiError::NotFound => (StatusCode::NOT_FOUND, "not_found", None),
-            ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized", None),
+            ApiError::Unauthorized => {
+                let body = ErrorBody {
+                    error: "unauthorized",
+                    message: None,
+                    entry_id: None,
+                };
+                return (
+                    StatusCode::UNAUTHORIZED,
+                    [(header::WWW_AUTHENTICATE, "Bearer")],
+                    Json(body),
+                )
+                    .into_response();
+            }
+            ApiError::Unavailable => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "auth_unavailable",
+                Some("Sign-in is not available right now. Please try again in a moment.".into()),
+            ),
             ApiError::Internal => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal",
@@ -304,17 +360,38 @@ pub mod tests {
         path: &str,
         body: Option<&str>,
     ) -> (StatusCode, String) {
+        call_as(app, None, method, path, body).await.0
+    }
+
+    /// Like [`call`], with an optional bearer token; also returns the WWW-Authenticate header.
+    pub async fn call_as(
+        app: &Router,
+        token: Option<&str>,
+        method: &str,
+        path: &str,
+        body: Option<&str>,
+    ) -> ((StatusCode, String), Option<String>) {
         let mut req = Request::builder().method(method).uri(path);
         if body.is_some() {
             req = req.header("content-type", "application/json");
+        }
+        if let Some(token) = token {
+            req = req.header("authorization", format!("Bearer {token}"));
         }
         let req = req
             .body(body.map_or_else(Body::empty, |b| Body::from(b.to_owned())))
             .unwrap();
         let res = app.clone().oneshot(req).await.unwrap();
         let status = res.status();
+        let challenge = res
+            .headers()
+            .get("www-authenticate")
+            .map(|v| v.to_str().unwrap().to_owned());
         let bytes = res.into_body().collect().await.unwrap().to_bytes();
-        (status, String::from_utf8(bytes.to_vec()).unwrap())
+        (
+            (status, String::from_utf8(bytes.to_vec()).unwrap()),
+            challenge,
+        )
     }
 
     fn oidc() -> AuthMode {
@@ -362,7 +439,7 @@ pub mod tests {
     }
 
     #[tokio::test]
-    async fn user_endpoints_are_refused_in_oidc_mode_until_tokens_are_checked() {
+    async fn without_a_token_every_user_endpoint_is_401() {
         let t = test_app(oidc());
         let mut refused = 0;
         for (method, path, body) in [
@@ -404,5 +481,106 @@ pub mod tests {
         let (status, body) = call(&t.app, "GET", "/reports/week", None).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body, "<app-root></app-root>");
+    }
+
+    fn oidc_for(issuer: &str) -> AuthMode {
+        AuthMode::Oidc {
+            issuer: issuer.to_owned(),
+            client_id: "clockopus".into(),
+            audience: "clockopus".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_valid_token_signs_the_user_in() {
+        let idp = crate::auth::testing::TestIssuer::start().await;
+        let t = test_app(oidc_for(&idp.issuer));
+        let token = idp.token("6f1c2b8e-1111-4222-8333-944455556666");
+        let ((status, body), _) = call_as(&t.app, Some(&token), "GET", "/api/v1/me", None).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(
+            body,
+            r#"{"id":"6f1c2b8e-1111-4222-8333-944455556666","name":"Anna Example"}"#
+        );
+
+        let ((status, _), challenge) = call_as(&t.app, None, "GET", "/api/v1/me", None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(challenge.as_deref(), Some("Bearer"));
+        let forged = idp.sign(
+            "key-1",
+            &[7; 32],
+            &idp.claims("6f1c2b8e-1111-4222-8333-944455556666"),
+        );
+        let ((status, _), _) = call_as(&t.app, Some(&forged), "GET", "/api/v1/me", None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn users_cannot_see_or_touch_each_others_data() {
+        let idp = crate::auth::testing::TestIssuer::start().await;
+        let t = test_app(oidc_for(&idp.issuer));
+        let (anna, ben) = (idp.token("anna"), idp.token("ben"));
+        let ((status, body), _) = call_as(
+            &t.app,
+            Some(&anna),
+            "POST",
+            "/api/v1/tasks",
+            Some(r#"{"title":"Anna's task","tags":["private"],"start":true}"#),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        let id = serde_json::from_str::<serde_json::Value>(&body).unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+
+        let mut checked = 0;
+        for (path, expected) in [
+            ("/api/v1/tasks?status=all", "[]"),
+            ("/api/v1/tags", "[]"),
+            ("/api/v1/timer", r#"{"running":null,"forgotten":null}"#),
+        ] {
+            let ((status, body), _) = call_as(&t.app, Some(&ben), "GET", path, None).await;
+            assert_eq!(
+                (status, body.as_str()),
+                (StatusCode::OK, expected),
+                "{path}"
+            );
+            checked += 1;
+        }
+        for (method, path, body) in [
+            (
+                "PATCH",
+                format!("/api/v1/tasks/{id}"),
+                Some(r#"{"title":"mine now"}"#),
+            ),
+            ("DELETE", format!("/api/v1/tasks/{id}"), None),
+            ("POST", format!("/api/v1/tasks/{id}/start"), None),
+            ("GET", format!("/api/v1/tasks/{id}/entries"), None),
+        ] {
+            let ((status, _), _) = call_as(&t.app, Some(&ben), method, &path, body).await;
+            assert_eq!(status, StatusCode::NOT_FOUND, "{method} {path}");
+            checked += 1;
+        }
+        assert_eq!(checked, 7);
+        // Anna's task is untouched.
+        let ((_, body), _) =
+            call_as(&t.app, Some(&anna), "GET", "/api/v1/tasks?status=all", None).await;
+        let tasks: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(tasks[0]["title"], "Anna's task");
+        assert!(tasks[0]["running_since"].is_string());
+        // Each user has their own directory.
+        assert!(t.data.path().join("anna/tasks.yaml").exists());
+        assert!(!t.data.path().join("ben").exists());
+    }
+
+    #[tokio::test]
+    async fn an_unreachable_issuer_is_503_not_401() {
+        let idp = crate::auth::testing::TestIssuer::start().await;
+        let t = test_app(oidc_for("http://127.0.0.1:9/realms/none"));
+        let ((status, body), _) =
+            call_as(&t.app, Some(&idp.token("anna")), "GET", "/api/v1/me", None).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert!(body.contains("auth_unavailable"), "{body}");
     }
 }

@@ -1,5 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { AuthService } from './core/auth.service';
 import { SessionService } from './core/session.service';
 
 @Component({
@@ -34,6 +35,9 @@ import { SessionService } from './core/session.service';
       @if (session.me(); as me) {
         <span class="user">{{ me.name }}</span>
       }
+      @if (auth.enabled()) {
+        <button type="button" class="logout" (click)="auth.logout()">Sign out</button>
+      }
     </header>
     @if (session.error(); as error) {
       <p class="error" role="alert">{{ error }}</p>
@@ -64,6 +68,11 @@ import { SessionService } from './core/session.service';
     .user {
       color: var(--text-muted);
       white-space: nowrap;
+    }
+    .logout {
+      white-space: nowrap;
+      font-size: 0.85rem;
+      padding: 4px 10px;
     }
     @media (max-width: 480px) {
       .user {
@@ -109,6 +118,7 @@ import { SessionService } from './core/session.service';
 })
 export class App {
   protected readonly session = inject(SessionService);
+  protected readonly auth = inject(AuthService);
 
   constructor() {
     void this.session.load();

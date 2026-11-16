@@ -8,10 +8,10 @@
 
 ---
 
-> **Status:** early development. Everything for a single user works with the YAML storage
-> (milestones M1–M4): tasks and timer, quick add with `#tags`, corrections with history, the
-> forgotten-timer prompt, day/week/month reports, CSV and data export/import. PostgreSQL and
-> sign-in with OpenID Connect come next, then the Helm chart.
+> **Status:** early development. The app is feature-complete for v1 (milestones M1–M5): tasks
+> and timer, quick add with `#tags`, corrections with history, the forgotten-timer prompt,
+> day/week/month reports, CSV and data export/import, YAML or PostgreSQL storage, sign-in with
+> OpenID Connect. The Helm chart and the first release come next.
 > What is planned and in which order: [docs/SPEC.md](docs/SPEC.md), architecture:
 > [docs/adr/0001-architecture.md](docs/adr/0001-architecture.md).
 
@@ -94,6 +94,12 @@ Requirements: Rust (version pinned in `backend/rust-toolchain.toml`), Node.js 24
 | `task frontend:run` | Angular dev server on http://localhost:4200 (API proxied to :8080) |
 | `task check` | Formatting, lint, all tests, builds, image — what CI runs (starts a PostgreSQL test container) |
 | `task db:test` / `task db:test:stop` | Start / remove the PostgreSQL test database on 127.0.0.1:55432 |
+| `task backend:run:oidc` | Backend with sign-in and PostgreSQL: starts a local Keycloak (`task dev:keycloak`, users `anna`/`anna` and `ben`/`ben`) and the test database |
+| `task dev:keycloak:stop` | Remove the local Keycloak |
+
+To try sign-in: build the frontend once (`cd frontend && npx ng build`), then run
+`task backend:run:oidc` and open <http://localhost:8080>. The realm in
+`deploy/dev/keycloak-realm.json` is for development only.
 
 Working rules for contributors and coding agents: [AGENTS.md](AGENTS.md).
 

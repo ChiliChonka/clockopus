@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { AuthService } from './auth.service';
 import { Settings, SettingsPatch } from './wire';
 
 /** Mirrors `PublicConfig` in backend/src/app.rs. */
@@ -16,6 +17,7 @@ export interface Me {
 @Injectable({ providedIn: 'root' })
 export class SessionService {
   private readonly http = inject(HttpClient);
+  private readonly auth = inject(AuthService);
 
   readonly config = signal<PublicConfig | null>(null);
   /** Set last: once there is a user, the settings (time zone) are in place too. */
@@ -26,9 +28,17 @@ export class SessionService {
   /** The browser's IANA time zone; replaceable in tests. */
   browserTimeZone: () => string = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+  private signedIn = false;
+
   async load(): Promise<void> {
     try {
-      this.config.set(await firstValueFrom(this.http.get<PublicConfig>('/api/v1/config')));
+      const config = await firstValueFrom(this.http.get<PublicConfig>('/api/v1/config'));
+      this.config.set(config);
+      if (config.auth === 'oidc' && !this.signedIn) {
+        // `false`: the browser is on its way to the sign-in page.
+        if (!(await this.auth.signIn(config))) return;
+        this.signedIn = true;
+      }
       await this.ensureTimeZone();
       this.me.set(await firstValueFrom(this.http.get<Me>('/api/v1/me')));
       this.error.set(null);
