@@ -1,5 +1,8 @@
+mod api;
 mod app;
 mod config;
+mod domain;
+mod store;
 
 use anyhow::Context;
 use tracing::{info, warn};

@@ -141,21 +141,21 @@ tasks:
     link: https://jira.example.com/browse/ABC-123
     status: active          # active | done
     pinned: false
-    created_at: 2026-11-17T09:12:00+01:00
+    created_at: "2026-11-17T09:12:00+01:00"
     entries:
       - id: 0193a1c2-7d41-7c00-8d2e-1a2b3c4d5e6f
-        start: 2026-11-17T09:12:00+01:00
-        end: 2026-11-17T10:40:00+01:00
+        start: "2026-11-17T09:12:00+01:00"
+        end: "2026-11-17T10:40:00+01:00"
         source: timer       # timer | manual
       - id: 0193a1c2-7d42-7a11-9e3f-6f5e4d3c2b1a
-        start: 2026-11-17T14:00:00+01:00
-        end: 2026-11-17T17:00:00+01:00
+        start: "2026-11-17T14:00:00+01:00"
+        end: "2026-11-17T17:00:00+01:00"
         source: timer
         note: pairing with Anna
         history:
-          - changed_at: 2026-11-18T08:03:00+01:00
+          - changed_at: "2026-11-18T08:03:00+01:00"
             reason: forgotten-timer
-            start: 2026-11-17T14:00:00+01:00
+            start: "2026-11-17T14:00:00+01:00"
             end: null
 ```
 
@@ -183,16 +183,18 @@ Database-enforced invariants:
 
 ## 7. API (overview)
 
-JSON over HTTPS under `/api/v1`, bearer token in auth mode `oidc`. Times in RFC 3339.
+JSON over HTTPS under `/api/v1`, bearer token in auth mode `oidc`. Times in RFC 3339, durations
+in whole seconds. Errors: `{"error": "<stable code>", "message": "<for people>"}` with `400`,
+`401`, `404` or `500`.
 
 | Method and path | Purpose |
 |---|---|
 | `GET /config` | Public runtime config for the frontend (auth mode, issuer, client ID) |
 | `GET /me`, `DELETE /me` | Current user; delete account |
-| `GET/PUT /me/settings` | Settings |
-| `GET /tasks?status=&q=&tag=`, `POST /tasks` | List, create (optionally `start: true`) |
-| `PATCH /tasks/{id}`, `DELETE /tasks/{id}` | Edit, delete |
-| `POST /tasks/{id}/start`, `POST /timer/stop` | Start (R2), stop (optional `end`) |
+| `GET/PUT /me/settings` | Settings; the frontend sends the browser's time zone on the first visit |
+| `GET /tasks?status=active\|done\|all`, `POST /tasks` | List in board order with `today_seconds`, `total_seconds`, `running_since`; create (optionally `start: true`). Filtering by text or tag happens in the browser. |
+| `PATCH /tasks/{id}`, `DELETE /tasks/{id}` | Edit (only the given fields; `link: ""` removes the link), delete |
+| `POST /tasks/{id}/start`, `POST /timer/stop` | Start (R2), stop (optional `end`); stopping when nothing runs is not an error |
 | `GET /timer` | Running entry plus `forgotten` flag and suggested end (R7/R8) |
 | `POST /timer/acknowledge` | “Keep running” |
 | `GET/POST /tasks/{id}/entries`, `PATCH/DELETE /entries/{id}` | Time entries |
