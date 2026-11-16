@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "clockopus.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "clockopus.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "clockopus.selector" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+{{- if eq .Values.storage.type "yaml" }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "clockopus.name" . }}-data
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "clockopus.labels" . | nindent 4 }}
+  annotations:
+    # Your data: keep the volume when the release is uninstalled.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.storage.yaml.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.yaml.size }}
+{{- end }}
+{{- if gt (int .Values.replicaCount) 1 }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "clockopus.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "clockopus.labels" . | nindent 4 }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "clockopus.selector" . | nindent 6 }}
+{{- end }}

@@ -1,0 +1,28 @@
+{{- /* Fails rendering for combinations that would not work or would be unsafe. */ -}}
+{{- $v := .Values }}
+{{- if not (has $v.auth.mode (list "oidc" "none")) }}
+{{- fail (printf "auth.mode must be oidc or none, not %q" $v.auth.mode) }}
+{{- end }}
+{{- if not (has $v.storage.type (list "postgres" "yaml")) }}
+{{- fail (printf "storage.type must be postgres or yaml, not %q" $v.storage.type) }}
+{{- end }}
+{{- if eq $v.auth.mode "oidc" }}
+{{- if or (not $v.auth.issuer) (not $v.auth.clientId) }}
+{{- fail "auth.mode=oidc needs auth.issuer and auth.clientId" }}
+{{- end }}
+{{- end }}
+{{- if and (eq $v.auth.mode "none") $v.httpRoute.enabled }}
+{{- fail "auth.mode=none with httpRoute.enabled would let everyone who reaches the route act as the same user; use auth.mode=oidc" }}
+{{- end }}
+{{- if and (eq $v.storage.type "yaml") (gt (int $v.replicaCount) 1) }}
+{{- fail "storage.type=yaml supports exactly one replica (one writer for the files); use storage.type=postgres to scale" }}
+{{- end }}
+{{- if and (eq $v.storage.type "postgres") (not $v.cnpg.enabled) (not $v.storage.postgres.existingSecret) }}
+{{- fail "storage.type=postgres needs cnpg.enabled or storage.postgres.existingSecret (a Secret with the connection URI)" }}
+{{- end }}
+{{- if and $v.cnpg.enabled (ne $v.storage.type "postgres") }}
+{{- fail "cnpg.enabled is only useful with storage.type=postgres" }}
+{{- end }}
+{{- if and $v.cnpg.backup.enabled (not $v.cnpg.enabled) }}
+{{- fail "cnpg.backup.enabled requires cnpg.enabled" }}
+{{- end }}

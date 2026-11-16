@@ -1,0 +1,113 @@
+# clockopus Helm chart. Defaults: sign-in with OpenID Connect and PostgreSQL; both need a few
+# values (see README.md). For a quick trial without sign-in use docker compose instead.
+
+image:
+  repository: ghcr.io/chilichonka/clockopus
+  # Default: the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# More than one replica only with storage.type=postgres.
+replicaCount: 1
+
+auth:
+  # oidc | none. `none` means one shared user for everyone who reaches the app; the chart
+  # refuses it together with an HTTPRoute (see validate.yaml).
+  mode: oidc
+  # Issuer URL, e.g. https://auth.example.com/realms/family
+  issuer: ""
+  # Public client of the frontend (Authorization Code + PKCE).
+  clientId: ""
+  # Accepted `aud` or `azp` of access tokens; default: clientId.
+  audience: ""
+
+storage:
+  # postgres | yaml
+  type: postgres
+  postgres:
+    # Secret with the connection URI. Empty with cnpg.enabled: the CloudNativePG app secret
+    # (<cnpg name>-app, key `uri`).
+    existingSecret: ""
+    uriKey: uri
+  yaml:
+    # PersistentVolumeClaim for the YAML files (one replica only).
+    size: 1Gi
+    storageClass: ""
+
+# CloudNativePG cluster for the app (operator must be installed).
+cnpg:
+  enabled: false
+  # Default: <release>-db
+  name: ""
+  # Pinned tag, e.g. ghcr.io/cloudnative-pg/postgresql:17.7-standard-trixie
+  image: ""
+  instances: 1
+  storageSize: 2Gi
+  storageClass: ""
+  database: clockopus
+  owner: clockopus
+  affinity: {}
+  # "restart" (CloudNativePG default) or "switchover". Empty = field omitted.
+  primaryUpdateMethod: ""
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 512Mi}
+  parameters: {}
+  backup:
+    enabled: false
+    destinationPath: ""
+    endpointURL: ""
+    credentialsSecret: ""
+    accessKeyIdKey: ACCESS_KEY_ID
+    secretAccessKeyKey: SECRET_ACCESS_KEY
+    # Key in the same Secret that holds the S3 region; empty = not set. Stores that check the
+    # region in the signature (Garage) need it.
+    regionKey: ""
+    retentionPolicy: "30d"
+    # Six fields, seconds first, UTC.
+    schedule: "0 15 3 * * *"
+
+httpRoute:
+  enabled: false
+  # parentRef: {name: my-gateway, namespace: gateway-system, sectionName: https}
+  parentRef: {}
+  # Optional list instead of parentRef (e.g. temporarily on two gateways).
+  parentRefs: []
+  hostnames: []
+  # Envoy Gateway's default request timeout is 15 s; clockopus requests are short.
+  timeout: 30s
+
+# Ingress restrictions; needs a CNI that enforces NetworkPolicies.
+# - App pods: own namespace and the gateway namespace on port 8080. Egress stays open (the
+#   issuer and the database may be anywhere).
+# - Database (cnpg.enabled): app pods, own namespace and the CNPG operator.
+networkPolicy:
+  enabled: false
+  gatewayNamespace: ""
+  cnpgOperatorNamespace: cnpg-system
+  # Namespace of the metrics scraper, if any (allowed to the database's metrics port).
+  metricsNamespace: ""
+
+# RUST_LOG filter.
+logLevel: info
+
+resources:
+  requests: {cpu: 20m, memory: 32Mi}
+  limits: {memory: 256Mi}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile: {type: RuntimeDefault}
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: {drop: [ALL]}
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

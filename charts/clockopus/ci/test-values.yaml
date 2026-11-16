@@ -1,0 +1,30 @@
+# Fictional render fixture (helm template / helm lint); Secrets are not part of the chart.
+auth:
+  mode: oidc
+  issuer: https://auth.example.com/realms/family
+  clientId: clockopus
+storage:
+  type: postgres
+cnpg:
+  enabled: true
+  image: ghcr.io/cloudnative-pg/postgresql:17.7-standard-trixie
+  instances: 2
+  storageClass: example-block
+  primaryUpdateMethod: switchover
+  affinity:
+    podAntiAffinityType: required
+  backup:
+    enabled: true
+    destinationPath: s3://example-clockopus-db-backup
+    endpointURL: https://s3.example.com
+    credentialsSecret: example-s3-credentials
+    regionKey: region
+httpRoute:
+  enabled: true
+  parentRef: {name: example-internal, namespace: example-gateway, sectionName: https}
+  hostnames: [clockopus.example.com]
+networkPolicy:
+  enabled: true
+  gatewayNamespace: example-gateway
+  metricsNamespace: example-monitoring
+replicaCount: 2
