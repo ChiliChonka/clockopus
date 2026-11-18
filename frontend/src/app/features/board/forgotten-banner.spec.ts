@@ -56,10 +56,12 @@ describe('ForgottenBanner', () => {
     const el = await render();
     button(el, 'Pick end time').click();
     await fixture.whenStable();
-    const input = el.querySelector<HTMLInputElement>('input[type=datetime-local]')!;
-    expect(input.value).toBe('2026-11-16T17:00');
+    const date = el.querySelector<HTMLInputElement>('input[type=date]')!;
+    const input = el.querySelector<HTMLInputElement>('app-time-field input')!;
+    expect(date.value).toBe('2026-11-16');
+    expect(input.value).toBe('17:00');
 
-    input.value = '2026-11-16T08:00';
+    input.value = '0800';
     input.dispatchEvent(new Event('input'));
     // A detached form is not submitted by jsdom on click; send the event the browser would.
     el.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true }));
@@ -67,7 +69,7 @@ describe('ForgottenBanner', () => {
     expect(stops).toEqual([]);
     expect(el.textContent).toContain('Pick a time after the start');
 
-    input.value = '2026-11-16T18:30';
+    input.value = '18:30';
     input.dispatchEvent(new Event('input'));
     el.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true }));
     expect(stops.map((d) => d.getTime())).toEqual([new Date(2026, 10, 16, 18, 30).getTime()]);

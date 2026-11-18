@@ -1,11 +1,13 @@
 import { Component, computed, input, output, signal } from '@angular/core';
 import { formatHuman } from '../../core/format';
-import { fromLocalInput, relativeDayTime, toLocalInput } from '../../core/local-time';
+import { combine, localDate, relativeDayTime, splitLocal } from '../../core/local-time';
+import { TimeField } from '../../core/time-field';
 import { Forgotten } from '../../core/wire';
 
 /** R8: asks about a forgotten timer; never changes data by itself (docs/SPEC.md, 3.3). */
 @Component({
   selector: 'app-forgotten-banner',
+  imports: [TimeField],
   template: `
     <section class="banner" role="alert" aria-labelledby="forgotten-text">
       <p id="forgotten-text">
@@ -20,17 +22,19 @@ import { Forgotten } from '../../core/wire';
         }
         @if (picking()) {
           <form (submit)="$event.preventDefault(); savePicked()">
-            <label>
+            <span class="end">
               End
               <input
-                type="datetime-local"
-                [value]="picked()"
-                [min]="minInput()"
-                [max]="maxInput()"
-                (input)="picked.set(pickedInput.value)"
+                type="date"
+                aria-label="End date"
+                [value]="pickedDate()"
+                [min]="minDate()"
+                [max]="maxDate()"
+                (input)="pickedDate.set(pickedInput.value)"
                 #pickedInput
               />
-            </label>
+              <app-time-field label="End time" [(value)]="pickedTime" />
+            </span>
             <button type="submit" class="primary">Save</button>
             <button type="button" (click)="picking.set(false)">Cancel</button>
           </form>
@@ -58,7 +62,7 @@ import { Forgotten } from '../../core/wire';
     }
     .actions,
     form,
-    label {
+    .end {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
@@ -83,7 +87,8 @@ export class ForgottenBanner {
   readonly keep = output<void>();
 
   readonly picking = signal(false);
-  readonly picked = signal('');
+  readonly pickedDate = signal('');
+  readonly pickedTime = signal('');
   readonly pickError = signal<string | null>(null);
 
   readonly since = computed(() => relativeDayTime(this.forgotten().start, new Date(this.now())));
@@ -92,18 +97,20 @@ export class ForgottenBanner {
     const end = this.forgotten().suggested_end;
     return end ? { date: new Date(end), label: relativeDayTime(end, new Date(this.now())) } : null;
   });
-  readonly minInput = computed(() => toLocalInput(this.forgotten().start));
-  readonly maxInput = computed(() => toLocalInput(new Date(this.now()).toISOString()));
+  readonly minDate = computed(() => splitLocal(this.forgotten().start).date);
+  readonly maxDate = computed(() => localDate(new Date(this.now())));
 
   startPicking(): void {
     const initial = this.forgotten().suggested_end ?? new Date(this.now()).toISOString();
-    this.picked.set(toLocalInput(initial));
+    const parts = splitLocal(initial);
+    this.pickedDate.set(parts.date);
+    this.pickedTime.set(parts.time);
     this.pickError.set(null);
     this.picking.set(true);
   }
 
   savePicked(): void {
-    const end = fromLocalInput(this.picked());
+    const end = combine(this.pickedDate(), this.pickedTime());
     const start = new Date(this.forgotten().start).getTime();
     if (!end || end.getTime() <= start || end.getTime() > this.now()) {
       this.pickError.set('Pick a time after the start and not in the future.');

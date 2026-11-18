@@ -558,4 +558,68 @@ mod tests {
         assert_eq!(refused, 3);
         store.delete_user(&user).await.unwrap();
     }
+
+    /// Migration 0002 lowers existing tags and makes running servers reload (version + 1).
+    #[tokio::test]
+    async fn migration_0002_lowers_existing_tags() {
+        let url = std::env::var("CLOCKOPUS_TEST_DATABASE_URL").expect(
+            "CLOCKOPUS_TEST_DATABASE_URL is not set; start a test database with d81ddbd65dd20137468ad2a9ececad8ce5c2d9ba5020f778d2426c5ae55e88af",
+        );
+        let store = PgStore::connect(&url).await.unwrap();
+        let pool = &store.pool;
+        let user = format!("t{}", Uuid::now_v7().simple());
+        let task = Uuid::now_v7();
+        sqlx::query("INSERT INTO users (key, version) VALUES ($1, 7)")
+            .bind(&user)
+            .execute(pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO tags (user_key, name, position) VALUES ($1, 'Team-A', 0), ($1, 'review', 1)",
+        )
+        .bind(&user)
+        .execute(pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO tasks (id, user_key, title, tags, status, created_at)
+             VALUES ($1, $2, 'A', ARRAY['Team-A', 'review', 'ÜBER'], 'active', now())",
+        )
+        .bind(task)
+        .bind(&user)
+        .execute(pool)
+        .await
+        .unwrap();
+
+        sqlx::raw_sql(include_str!("../../migrations/0002_lowercase_tags.sql"))
+            .execute(pool)
+            .await
+            .unwrap();
+
+        let tags: Vec<String> = sqlx::query_scalar("SELECT tags FROM tasks WHERE id = $1")
+            .bind(task)
+            .fetch_one(pool)
+            .await
+            .map(|t: Vec<String>| t)
+            .unwrap();
+        assert_eq!(
+            tags,
+            vec!["team-a", "review", "über"],
+            "lower case, order kept"
+        );
+        let names: Vec<String> =
+            sqlx::query_scalar("SELECT name FROM tags WHERE user_key = $1 ORDER BY position")
+                .bind(&user)
+                .fetch_all(pool)
+                .await
+                .unwrap();
+        assert_eq!(names, vec!["team-a", "review"]);
+        let version: i64 = sqlx::query_scalar("SELECT version FROM users WHERE key = $1")
+            .bind(&user)
+            .fetch_one(pool)
+            .await
+            .unwrap();
+        assert!(version > 7, "version bumped: {version}");
+        store.delete_user(&user).await.unwrap();
+    }
 }

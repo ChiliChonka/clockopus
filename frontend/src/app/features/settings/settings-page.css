@@ -30,7 +30,8 @@ form.inline {
   flex-wrap: wrap;
   align-items: end;
 }
-label {
+label,
+.field {
   display: grid;
   gap: 4px;
   font-size: 0.9rem;

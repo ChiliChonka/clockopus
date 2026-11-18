@@ -169,3 +169,9 @@ h3 {
   margin: 0;
   color: var(--danger);
 }
+.grid th.pickable button {
+  font-weight: 600;
+}
+.grid .selected-row {
+  color: var(--accent);
+}

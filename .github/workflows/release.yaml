@@ -70,7 +70,8 @@ jobs:
           docker run -d --name smoke -p 127.0.0.1:8080:8080 -e CLOCKOPUS_AUTH=none \
             "${{ steps.version.outputs.image }}@${{ steps.build.outputs.digest }}"
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8080/readyz && break; sleep 1; done
-          test "$(curl -fsS http://127.0.0.1:8080/api/v1/config)" = '{"auth":"none"}'
+          # The image reports the released version.
+          test "$(curl -fsS http://127.0.0.1:8080/api/v1/config)" = "{\"version\":\"${{ steps.version.outputs.version }}\",\"auth\":\"none\"}"
 
       - name: Package and push the chart
         id: chart

@@ -3,16 +3,18 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { App } from './app';
 import { AuthService } from './core/auth.service';
-import { Me, SessionService } from './core/session.service';
+import { Me, PublicConfig, SessionService } from './core/session.service';
 
 describe('App', () => {
   const me = signal<Me | null>(null);
+  const config = signal<PublicConfig | null>(null);
   const error = signal<string | null>(null);
   const load = vi.fn().mockResolvedValue(undefined);
   const auth = { enabled: signal(false), logout: vi.fn() };
 
   beforeEach(async () => {
     me.set(null);
+    config.set(null);
     error.set(null);
     load.mockClear();
     auth.enabled.set(false);
@@ -21,7 +23,7 @@ describe('App', () => {
       imports: [App],
       providers: [
         provideRouter([]),
-        { provide: SessionService, useValue: { me, error, load } },
+        { provide: SessionService, useValue: { me, config, error, load } },
         { provide: AuthService, useValue: auth },
       ],
     }).compileComponents();
@@ -79,5 +81,19 @@ describe('App', () => {
     expect(button.textContent!.trim()).toBe('Sign out');
     button.click();
     expect(auth.logout).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the running version from the server, linked to the releases', async () => {
+    let fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    expect((fixture.nativeElement as HTMLElement).querySelector('footer')).toBeNull();
+
+    // Literal as the backend sends it (backend/src/app.rs).
+    config.set(JSON.parse('{"version":"0.2.0","auth":"none"}'));
+    fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const link = (fixture.nativeElement as HTMLElement).querySelector('footer a')!;
+    expect(link.textContent!.trim()).toBe('clockopus 0.2.0');
+    expect(link.getAttribute('href')).toBe('https://github.com/ChiliChonka/clockopus/releases');
   });
 });

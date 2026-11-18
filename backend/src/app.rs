@@ -120,8 +120,16 @@ pub enum PublicConfig {
     Oidc { issuer: String, client_id: String },
 }
 
-async fn public_config(State(state): State<AppState>) -> Json<PublicConfig> {
-    Json(match &state.config.auth {
+/// `GET /api/v1/config`: the running version (shown in the frontend) and the auth settings.
+#[derive(Debug, Serialize)]
+pub struct ConfigBody {
+    version: &'static str,
+    #[serde(flatten)]
+    auth: PublicConfig,
+}
+
+async fn public_config(State(state): State<AppState>) -> Json<ConfigBody> {
+    let auth = match &state.config.auth {
         AuthMode::None => PublicConfig::None,
         AuthMode::Oidc {
             issuer, client_id, ..
@@ -129,6 +137,10 @@ async fn public_config(State(state): State<AppState>) -> Json<PublicConfig> {
             issuer: issuer.clone(),
             client_id: client_id.clone(),
         },
+    };
+    Json(ConfigBody {
+        version: env!("CARGO_PKG_VERSION"),
+        auth,
     })
 }
 
@@ -416,17 +428,20 @@ pub mod tests {
     }
 
     #[tokio::test]
-    async fn config_tells_the_frontend_the_auth_mode() {
+    async fn config_tells_the_frontend_the_version_and_auth_mode() {
+        let v = env!("CARGO_PKG_VERSION");
         let t = test_app(AuthMode::None);
         let (status, body) = call(&t.app, "GET", "/api/v1/config", None).await;
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(body, r#"{"auth":"none"}"#);
+        assert_eq!(body, format!(r#"{{"version":"{v}","auth":"none"}}"#));
 
         let t = test_app(oidc());
         let (_, body) = call(&t.app, "GET", "/api/v1/config", None).await;
         assert_eq!(
             body,
-            r#"{"auth":"oidc","issuer":"https://auth.example.com/realms/x","client_id":"clockopus"}"#
+            format!(
+                r#"{{"version":"{v}","auth":"oidc","issuer":"https://auth.example.com/realms/x","client_id":"clockopus"}}"#
+            )
         );
     }
 

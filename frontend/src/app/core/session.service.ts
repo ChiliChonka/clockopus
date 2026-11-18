@@ -5,7 +5,9 @@ import { AuthService } from './auth.service';
 import { Settings, SettingsPatch } from './wire';
 
 /** Mirrors `PublicConfig` in backend/src/app.rs. */
-export type PublicConfig = { auth: 'none' } | { auth: 'oidc'; issuer: string; client_id: string };
+export type PublicConfig = { version?: string } & (
+  { auth: 'none' } | { auth: 'oidc'; issuer: string; client_id: string }
+);
 
 /** Mirrors `Me` in backend/src/app.rs. */
 export interface Me {

@@ -77,9 +77,18 @@
               </tr>
             </thead>
             <tbody>
-              @for (row of weekRows(); track row.title + $index) {
-                <tr>
-                  <th scope="row">{{ row.title }}</th>
+              @for (row of weekRows(); track row.taskId) {
+                <tr [class.dimmed]="!row.highlighted">
+                  <th scope="row" class="pickable">
+                    <button
+                      type="button"
+                      [class.picked]="selection.hasTask(row.taskId)"
+                      [attr.aria-pressed]="selection.hasTask(row.taskId)"
+                      (click)="selection.toggleTask(row.taskId, pick($event))"
+                    >
+                      {{ row.title }}
+                    </button>
+                  </th>
                   @for (s of row.days; track $index) {
                     <td [class.zero]="!s">{{ s ? hm(s) : '–' }}</td>
                   }
@@ -95,6 +104,15 @@
                 }
                 <td class="total">{{ hm(r.total_seconds) }}</td>
               </tr>
+              @if (selection.active()) {
+                <tr class="selected-row">
+                  <th scope="row">Selected</th>
+                  @for (d of r.days; track d.date) {
+                    <td>{{ hm(dayTotals().get(d.date) ?? 0) }}</td>
+                  }
+                  <td class="total">{{ hm(selectedSeconds()) }}</td>
+                </tr>
+              }
             </tfoot>
           </table>
         </div>
@@ -107,26 +125,49 @@
       <p class="total-line">
         Total <strong>{{ hm(r.total_seconds) }}</strong>
       </p>
-      @if (mode() === 'month' && r.by_task.length) {
-        <ul class="list">
+      @if (selection.active()) {
+        <p class="total-line">
+          Selected <strong>{{ hm(selectedSeconds()) }}</strong>
+          <button type="button" class="link" (click)="selection.clear()">Clear</button>
+        </p>
+      }
+      @if (mode() !== 'week' && r.by_task.length) {
+        <ul class="list pickable">
           @for (t of r.by_task; track t.task_id) {
             <li>
-              <span class="name">{{ t.title }}</span><span class="num">{{ hm(t.seconds) }}</span>
+              <button
+                type="button"
+                [class.picked]="selection.hasTask(t.task_id)"
+                [attr.aria-pressed]="selection.hasTask(t.task_id)"
+                (click)="selection.toggleTask(t.task_id, pick($event))"
+              >
+                <span class="name">{{ t.title }}</span><span class="num">{{ hm(t.seconds) }}</span>
+              </button>
             </li>
           }
         </ul>
       }
       @if (r.by_tag.length) {
-        <h3>Hours per tag</h3>
-        <ul class="list">
+        <h3>Time per tag</h3>
+        <ul class="list pickable">
           @for (t of r.by_tag; track t.tag) {
             <li>
-              <span class="name">{{ t.tag ? '#' + t.tag : 'untagged' }}</span>
-              <span class="num">{{ hours(t.seconds) }}</span>
+              <button
+                type="button"
+                [class.picked]="selection.hasTag(t.tag)"
+                [attr.aria-pressed]="selection.hasTag(t.tag)"
+                (click)="selection.toggleTag(t.tag, pick($event))"
+              >
+                <span class="name">{{ t.tag ? '#' + t.tag : 'untagged' }}</span>
+                <span class="num">{{ hm(t.seconds) }}</span>
+              </button>
             </li>
           }
         </ul>
-        <p class="muted hint">A task with several tags counts fully for each of them.</p>
+        <p class="muted hint">
+          A task with several tags counts fully for each of them. Click to highlight, Ctrl/⌘+click
+          to add more.
+        </p>
       }
     </aside>
   </div>

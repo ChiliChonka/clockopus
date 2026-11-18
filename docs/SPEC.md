@@ -24,7 +24,7 @@ context switches.
 | **User** | Created on first sign-in, identified by `(issuer, sub)`. Holds settings. |
 | **Task** | Something you spend time on. Title (required), tags (optional), link (optional URL), status `active` or `done`, pinned flag. Belongs to one user. |
 | **Time entry** | A span of time on one task: `start`, `end` (empty while running), `source` (`timer` or `manual`), optional note, history of corrections. |
-| **Tag** | A label, per user, unique by name (case-insensitive). Optional colour. |
+| **Tag** | A label, per user, **lower case** (stored that way; data from before 0.2 is lowered on read or by migration). Optional colour. |
 | **Settings** | Time zone (IANA), workday end (default `17:00`), forgotten-timer threshold (default 10 h), week start (default Monday), CSV rounding. |
 
 ## 3. Rules
@@ -66,8 +66,8 @@ context switches.
 
 - Marking a task `done` removes it from the board; it stays in reports and in search, and can be
   reopened. Deleting a task deletes its entries (with confirmation showing the tracked total).
-- Tags are created implicitly when used. Renaming a tag renames it everywhere; deleting a tag
-  removes it from all tasks.
+- Tags are created implicitly when used, always in lower case (`#Team-A` becomes `team-a`).
+  Renaming a tag renames it everywhere; deleting a tag removes it from all tasks.
 - **Quick-access tags:** the 8 tags with the most tracked time in the last 30 days.
 
 ## 4. User interface
@@ -79,7 +79,9 @@ setting, fully usable with the keyboard.
 
 - **Quick-add field** at the top (focus with `n` or `Ctrl+K`). Input like
   `Review payment PR #review #team-a`: words starting with `#` become tags, with auto-completion
-  from existing tags. `Enter` creates and starts the task, `Alt+Enter` only creates it.
+  from existing tags. `Enter` creates and starts the task, `Alt+Enter` only creates it. While a
+  `#tag` is typed, `↑`/`↓` choose a suggestion, `Tab` takes the chosen one (or the first),
+  `Enter` takes the chosen one, `Esc` closes the list.
 - **Quick-access tag bar** below it: clicking a tag inserts it into the quick-add field.
 - **Cards**, ordered: running task first, then pinned tasks, then by `last_used_at`. A card shows
   title, tags, link icon, time tracked today, and the buttons **Start**/**Stop** and **Edit**.
@@ -93,19 +95,29 @@ setting, fully usable with the keyboard.
 Title, tags, link; list of the task's time entries (newest first) with inline editing of start,
 end and note; **Add time** for a manual entry; history of an entry shown on demand.
 
+**Times are entered in 24-hour form without seconds**, in a text field (`930`, `9:30`, `9.30` →
+`09:30`), next to a date field. The browser's own time fields follow the browser language (AM/PM
+in English) and cannot be forced to 24 hours, so they are not used.
+
 ### 4.3 Reports
 
 Range selector: **Day**, **Week**, **Month**, custom range; previous/next; “today”.
 
 - **Day:** timeline from first to last entry; blocks per entry, coloured by task; dragging a block
-  edge corrects the entry (R4–R6). Totals per task and hours per tag beside it.
-- **Week:** grid tasks × days with daily and weekly totals; hours per tag.
+  edge corrects the entry (R4–R6). Totals per task and time per tag beside it.
+- **Week:** grid tasks × days with daily and weekly totals; time per tag.
 - **Month:** calendar with the total per day; click a day to open the day view; totals per task
-  and hours per tag for the month.
-- **Hours per tag:** every tag of a task receives the full time of that task's entries. Because a
+  and time per tag for the month.
+- **Highlighting:** a click on a task or a tag (in the totals, or a task row of the week) shows
+  only its time: other blocks and rows are dimmed, a “Selected” total appears (in the week a
+  “Selected” row per day, in the month the calendar shows only the selected time). `Ctrl`/`⌘`+click
+  adds or removes more tasks and tags; a plain click on the only selected item, or “Clear”, ends
+  it. The selection is shared by day, week and month while the app is open.
+- **Time per tag:** every tag of a task receives the full time of that task's entries. Because a
   task can have several tags, the sum over tags can exceed the total; the view says so in one line.
   Time on untagged tasks is shown as “untagged”.
-- Format: cards and timelines `h:mm`; report totals in hours with one decimal (`3.5 h`).
+- Format: day, week and month views write durations as `1h30m` (`45m`, `2h`, `1h05m`); cards
+  on the board and the running timer keep `h:mm` / `h:mm:ss`.
 
 ### 4.4 Settings
 
@@ -229,7 +241,7 @@ in whole seconds. Errors: `{"error": "<stable code>", "message": "<for people>"}
 
 | Method and path | Purpose |
 |---|---|
-| `GET /config` | Public runtime config for the frontend (auth mode, issuer, client ID) |
+| `GET /config` | Public runtime config for the frontend: `version` (shown at the bottom of the page), auth mode, issuer, client ID |
 | `GET /me`, `DELETE /me` | Current user; delete all data of the user (`204`) |
 | `GET/PUT /me/settings` | `timezone`, `workday_end` (`HH:MM`), `forgotten_after_hours` (1–24), `week_start` (`monday`/`sunday`), `csv_rounding` (0/5/15); `PUT` changes only the given fields. The frontend sends the browser's time zone on the first visit. |
 | `GET /tasks?status=active\|done\|all`, `POST /tasks` | List in board order with `today_seconds`, `total_seconds`, `running_since`; create (optionally `start: true`). Filtering by text or tag happens in the browser. |

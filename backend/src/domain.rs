@@ -200,10 +200,10 @@ pub fn normalize_tags(tags: &[String]) -> Result<Vec<String>, DomainError> {
                 format!("A tag can have at most {MAX_TAG_LEN} characters."),
             ));
         }
-        // Case-insensitive, also beyond ASCII (`Über` and `über` are the same tag).
+        // Tags are stored in lower case, also beyond ASCII (`Über` → `über`).
         let lower = tag.to_lowercase();
-        if !out.iter().any(|t| t.to_lowercase() == lower) {
-            out.push(tag.to_owned());
+        if !out.contains(&lower) {
+            out.push(lower);
         }
     }
     if out.len() > MAX_TAGS_PER_TASK {
@@ -287,23 +287,40 @@ impl UserData {
             .ok_or(DomainError::NotFound)
     }
 
-    /// Uses the spelling of an existing tag (`support` typed, `Support` known → `Support`) and
-    /// registers new tags.
+    /// Registers new tags. `tags` comes from [`normalize_tags`], so it is already lower case.
     pub(crate) fn adopt_tags(&mut self, tags: Vec<String>) -> Vec<String> {
-        tags.into_iter()
-            .map(|tag| {
+        for tag in &tags {
+            if !self.tags.iter().any(|t| t.name == *tag) {
+                self.tags.push(Tag {
+                    name: tag.clone(),
+                    color: None,
+                });
+            }
+        }
+        tags
+    }
+
+    /// Brings data written before tags were lower case into shape: tag names in lower case,
+    /// duplicates that differed only in case merged (first one wins, its colour too).
+    pub fn lowercase_tags(&mut self) {
+        let mut seen: Vec<Tag> = Vec::new();
+        for tag in self.tags.drain(..) {
+            let name = tag.name.to_lowercase();
+            if !seen.iter().any(|t| t.name == name) {
+                seen.push(Tag { name, ..tag });
+            }
+        }
+        self.tags = seen;
+        for task in &mut self.tasks {
+            let mut tags: Vec<String> = Vec::new();
+            for tag in task.tags.drain(..) {
                 let lower = tag.to_lowercase();
-                if let Some(known) = self.tags.iter().find(|t| t.name.to_lowercase() == lower) {
-                    known.name.clone()
-                } else {
-                    self.tags.push(Tag {
-                        name: tag.clone(),
-                        color: None,
-                    });
-                    tag
+                if !tags.contains(&lower) {
+                    tags.push(lower);
                 }
-            })
-            .collect()
+            }
+            task.tags = tags;
+        }
     }
 
     pub fn create_task(&mut self, new: NewTask, now: Timestamp) -> Result<Uuid, DomainError> {
@@ -641,7 +658,7 @@ mod tests {
             "#support".into(),
             "Support".into(),
             "".into(),
-            "kunde-x".into(),
+            "Kunde-X".into(),
         ])
         .unwrap();
         assert_eq!(tags, vec!["support", "kunde-x"]);
@@ -665,13 +682,58 @@ mod tests {
     }
 
     #[test]
-    fn existing_tag_spelling_is_reused_and_new_tags_are_registered() {
+    fn tags_are_stored_lower_case_and_registered_once() {
         let mut d = UserData::default();
         task(&mut d, "A", &["Support"], "2026-11-17T08:00:00Z");
-        task(&mut d, "B", &["support", "new"], "2026-11-17T08:01:00Z");
-        assert_eq!(d.tasks[1].tags, vec!["Support", "new"]);
+        task(
+            &mut d,
+            "B",
+            &["SUPPORT", "Über-Team"],
+            "2026-11-17T08:01:00Z",
+        );
+        assert_eq!(d.tasks[0].tags, vec!["support"]);
+        assert_eq!(d.tasks[1].tags, vec!["support", "über-team"]);
         let names: Vec<_> = d.tags.iter().map(|t| t.name.as_str()).collect();
-        assert_eq!(names, vec!["Support", "new"]);
+        assert_eq!(names, vec!["support", "über-team"]);
+    }
+
+    #[test]
+    fn old_mixed_case_tags_are_lowered_and_merged() {
+        let mut d = UserData {
+            tags: vec![
+                Tag {
+                    name: "Support".into(),
+                    color: Some("#123456".into()),
+                },
+                Tag {
+                    name: "support".into(),
+                    color: None,
+                },
+                Tag {
+                    name: "Team-A".into(),
+                    color: None,
+                },
+            ],
+            ..UserData::default()
+        };
+        let a = task(&mut d, "A", &[], "2026-11-17T08:00:00Z");
+        d.tasks[0].tags = vec!["Support".into(), "support".into(), "Team-A".into()];
+        d.lowercase_tags();
+        assert_eq!(d.tasks[0].tags, vec!["support", "team-a"]);
+        assert_eq!(
+            d.tags,
+            vec![
+                Tag {
+                    name: "support".into(),
+                    color: Some("#123456".into())
+                },
+                Tag {
+                    name: "team-a".into(),
+                    color: None
+                },
+            ]
+        );
+        assert_eq!(d.tasks[0].id, a);
     }
 
     #[test]

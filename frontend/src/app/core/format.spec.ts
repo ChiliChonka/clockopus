@@ -1,4 +1,4 @@
-import { formatHm, formatHms, formatHours, formatHuman } from './format';
+import { formatDuration, formatHm, formatHms, formatHuman } from './format';
 
 describe('format', () => {
   it('shows hours and minutes', () => {
@@ -10,10 +10,14 @@ describe('format', () => {
     expect(formatHm(-5)).toBe('0:00');
   });
 
-  it('shows report hours with one decimal', () => {
-    expect(formatHours(0)).toBe('0.0 h');
-    expect(formatHours(5400)).toBe('1.5 h');
-    expect(formatHours(3600 * 7 + 59 * 60)).toBe('8.0 h');
+  it('writes durations in the views as 1h30m', () => {
+    expect(formatDuration(5400)).toBe('1h30m');
+    expect(formatDuration(3600 + 5 * 60)).toBe('1h05m');
+    expect(formatDuration(2 * 3600)).toBe('2h');
+    expect(formatDuration(45 * 60 + 59)).toBe('45m');
+    expect(formatDuration(0)).toBe('0m');
+    expect(formatDuration(26 * 3600 + 60)).toBe('26h01m');
+    expect(formatDuration(-5)).toBe('0m');
   });
 
   it('writes durations for sentences', () => {

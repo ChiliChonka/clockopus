@@ -8,10 +8,10 @@ describe('parseQuickAdd', () => {
     });
   });
 
-  it('takes tags anywhere and collapses whitespace', () => {
-    expect(parseQuickAdd('  #support  Fix   login #Kunde-X bug ')).toEqual({
+  it('takes tags anywhere, in lower case, and collapses whitespace', () => {
+    expect(parseQuickAdd('  #support  Fix   login #Kunde-X bug #SUPPORT')).toEqual({
       title: 'Fix login bug',
-      tags: ['support', 'Kunde-X'],
+      tags: ['support', 'kunde-x'],
     });
   });
 

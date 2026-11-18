@@ -99,11 +99,11 @@ describe('ReportView', () => {
       [...tr.children].map((c) => c.textContent!.trim()),
     );
     expect(rows).toEqual([
-      ['Review', '1:30', '–', '–', '–', '–', '–', '–', '1:30'],
-      ['Mail', '–', '–', '0:30', '–', '–', '–', '–', '0:30'],
+      ['Review', '1h30m', '–', '–', '–', '–', '–', '–', '1h30m'],
+      ['Mail', '–', '–', '30m', '–', '–', '–', '–', '30m'],
     ]);
     const foot = [...el.querySelectorAll('tfoot td')].map((c) => c.textContent!.trim());
-    expect(foot).toEqual(['1:30', '0:00', '0:30', '0:00', '0:00', '0:00', '0:00', '2:00']);
+    expect(foot).toEqual(['1h30m', '0m', '30m', '0m', '0m', '0m', '0m', '2h']);
     const links = [...el.querySelectorAll('thead a')].map((a) => a.getAttribute('href'));
     expect(links[0]).toBe('/day/2026-11-16');
   });
@@ -113,7 +113,7 @@ describe('ReportView', () => {
     const tags = [...el.querySelectorAll('aside li')].map((li) =>
       [...li.querySelectorAll('span')].map((s) => s.textContent!.trim()).join(' '),
     );
-    expect(tags).toEqual(['#review 1.5 h', 'untagged 0.5 h']);
+    expect(tags).toEqual(['#review 1h30m', 'untagged 30m']);
   });
 
   it('shows a month as a calendar with day totals linking to the day', async () => {
@@ -123,7 +123,7 @@ describe('ReportView', () => {
     const cells = el.querySelectorAll<HTMLAnchorElement>('.calendar a.cell');
     expect(cells.length).toBe(42);
     const nov16 = [...cells].find((c) => c.getAttribute('href') === '/day/2026-11-16')!;
-    expect(nov16.querySelector('.sum')!.textContent).toBe('1:30');
+    expect(nov16.querySelector('.sum')!.textContent).toBe('1h30m');
     expect(nov16.style.getPropertyValue('--heat')).toBe('1');
     const oct26 = [...cells].find((c) => c.getAttribute('href') === '/day/2026-10-26')!;
     expect(oct26.classList).toContain('out');
@@ -151,5 +151,47 @@ describe('ReportView', () => {
     });
     const el = await render('week', '2026-11-18');
     expect(el.textContent).toContain('Nothing tracked in this period.');
+  });
+
+  function click(el: HTMLElement, selector: string, label: string, init: MouseEventInit = {}) {
+    const button = [...el.querySelectorAll<HTMLButtonElement>(selector)].find((b) =>
+      b.textContent!.trim().startsWith(label),
+    )!;
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true, ...init }));
+  }
+
+  it('week: a click on a task highlights its row and shows the selected time per day', async () => {
+    const el = await render('week', '2026-11-18');
+    click(el, 'tbody th button', 'Mail');
+    await fixture.whenStable();
+    const dimmedRows = [...el.querySelectorAll('tbody tr')].map((tr) =>
+      tr.classList.contains('dimmed'),
+    );
+    expect(dimmedRows).toEqual([true, false]);
+    const selected = [...el.querySelectorAll('tfoot tr.selected-row td')].map((c) =>
+      c.textContent!.trim(),
+    );
+    expect(selected).toEqual(['0m', '0m', '30m', '0m', '0m', '0m', '0m', '30m']);
+  });
+
+  it('week: tags with Ctrl+click add up', async () => {
+    const el = await render('week', '2026-11-18');
+    click(el, 'aside .pickable button', '#review');
+    click(el, 'aside .pickable button', 'untagged', { ctrlKey: true });
+    await fixture.whenStable();
+    expect([...el.querySelectorAll('tbody tr.dimmed')].length).toBe(0);
+    expect(el.querySelector('aside .total-line + .total-line strong')!.textContent).toBe('2h');
+  });
+
+  it('month: the calendar shows only the highlighted time', async () => {
+    const el = await render('month', '2026-11-18');
+    click(el, 'aside .pickable button', 'Mail');
+    await fixture.whenStable();
+    const cells = [...el.querySelectorAll<HTMLAnchorElement>('.calendar a.cell')];
+    const nov16 = cells.find((c) => c.getAttribute('href') === '/day/2026-11-16')!;
+    const nov18 = cells.find((c) => c.getAttribute('href') === '/day/2026-11-18')!;
+    expect(nov16.querySelector('.sum')).toBeNull();
+    expect(nov18.querySelector('.sum')!.textContent).toBe('30m');
+    expect(nov18.style.getPropertyValue('--heat')).toBe('1');
   });
 });

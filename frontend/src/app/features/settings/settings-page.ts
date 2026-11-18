@@ -1,6 +1,7 @@
 import { Component, computed, inject, linkedSignal, signal } from '@angular/core';
 import { AccountService } from '../../core/account.service';
-import { monthRange, localDate } from '../../core/local-time';
+import { monthRange, localDate, parseHm } from '../../core/local-time';
+import { TimeField } from '../../core/time-field';
 import { SessionService } from '../../core/session.service';
 import { TasksService, errorMessage } from '../../core/tasks.service';
 import { WeekStart } from '../../core/wire';
@@ -10,6 +11,7 @@ type Notice = { kind: 'ok' | 'error'; text: string } | null;
 /** Settings, exports, import and account deletion (docs/SPEC.md, section 4.4). */
 @Component({
   selector: 'app-settings-page',
+  imports: [TimeField],
   templateUrl: './settings-page.html',
   styleUrl: './settings-page.css',
 })
@@ -45,7 +47,7 @@ export class SettingsPage {
     try {
       await this.session.saveSettings({
         timezone: this.timezone().trim(),
-        workday_end: this.workdayEnd(),
+        workday_end: parseHm(this.workdayEnd()) ?? this.workdayEnd(),
         forgotten_after_hours: Number(this.forgottenAfter()),
         week_start: this.weekStart(),
         csv_rounding: Number(this.csvRounding()),

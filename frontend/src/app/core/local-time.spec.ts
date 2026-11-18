@@ -1,10 +1,13 @@
 import {
   addDays,
+  combine,
   fromLocalInput,
   localDate,
   monthGrid,
   monthRange,
+  parseHm,
   relativeDayTime,
+  splitLocal,
   startOfDay,
   toLocalInput,
   weekRange,
@@ -12,6 +15,39 @@ import {
 
 // Expectations are built from local Dates, so the tests hold in any time zone.
 describe('local time', () => {
+  it('reads typed times in 24-hour form without seconds', () => {
+    const cases: [string, string | null][] = [
+      ['9', '09:00'],
+      ['09', '09:00'],
+      ['930', '09:30'],
+      ['0930', '09:30'],
+      ['1745', '17:45'],
+      ['9:30', '09:30'],
+      ['9.30', '09:30'],
+      ['9:3', '09:30'],
+      [' 17:05 ', '17:05'],
+      ['23:59', '23:59'],
+      ['0:00', '00:00'],
+      ['24:00', null],
+      ['12:60', null],
+      ['5 pm', null],
+      ['17:45:10', null],
+      ['', null],
+    ];
+    for (const [text, expected] of cases) expect(parseHm(text), text).toBe(expected);
+    expect(cases.length).toBe(16);
+  });
+
+  it('combines a date with a typed time and splits an instant', () => {
+    expect(combine('2026-11-17', '930')?.getTime()).toBe(new Date(2026, 10, 17, 9, 30).getTime());
+    expect(combine('2026-11-17', '25:00')).toBeNull();
+    expect(combine('', '09:30')).toBeNull();
+    expect(splitLocal(new Date(2026, 10, 17, 18, 5).toISOString())).toEqual({
+      date: '2026-11-17',
+      time: '18:05',
+    });
+  });
+
   it('finds the week of a date for both week starts', () => {
     // 2026-11-18 is a Wednesday.
     expect(weekRange('2026-11-18', 'monday')).toEqual(['2026-11-16', '2026-11-22']);

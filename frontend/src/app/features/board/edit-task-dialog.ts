@@ -10,23 +10,24 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { fromLocalInput, localDate } from '../../core/local-time';
+import { combine, localDate } from '../../core/local-time';
+import { TimeField } from '../../core/time-field';
 import { TasksService } from '../../core/tasks.service';
 import { EntryView, TaskView } from '../../core/wire';
 import { EntryChange, EntryRow } from '../entries/entry-row';
 
-/** Splits `review #team-a, x` into tag names. */
+/** Splits `review #Team-A, x` into lower-case tag names, each once. */
 export function parseTagInput(text: string): string[] {
   return text
     .split(/[\s,]+/)
-    .map((t) => t.replace(/^#+/, ''))
-    .filter(Boolean);
+    .map((t) => t.replace(/^#+/, '').toLowerCase())
+    .filter((t, i, all) => t !== '' && all.indexOf(t) === i);
 }
 
 /** Edit dialog (docs/SPEC.md, 4.2): title, tags, link, entries, add time. */
 @Component({
   selector: 'app-edit-task-dialog',
-  imports: [EntryRow],
+  imports: [EntryRow, TimeField],
   template: `
     <dialog #dialog (close)="closed.emit()" aria-labelledby="edit-title">
       @if (task(); as task) {
@@ -70,10 +71,8 @@ export function parseTagInput(text: string): string[] {
           <label
             >Date <input type="date" [value]="addDate()" (input)="addDate.set(d.value)" #d
           /></label>
-          <label
-            >From <input type="time" [value]="addFrom()" (input)="addFrom.set(f.value)" #f
-          /></label>
-          <label>To <input type="time" [value]="addTo()" (input)="addTo.set(u.value)" #u /></label>
+          <span class="field">From <app-time-field label="From" [(value)]="addFrom" /></span>
+          <span class="field">To <app-time-field label="To" [(value)]="addTo" /></span>
           <label class="grow">
             Note <input type="text" [value]="addNote()" (input)="addNote.set(n.value)" #n />
           </label>
@@ -129,7 +128,8 @@ export function parseTagInput(text: string): string[] {
       gap: 8px;
       align-items: end;
     }
-    label {
+    label,
+    .field {
       display: grid;
       gap: 2px;
       font-size: 0.85rem;
@@ -205,10 +205,10 @@ export class EditTaskDialog {
   }
 
   async addTime(task: TaskView): Promise<void> {
-    const start = fromLocalInput(`${this.addDate()}T${this.addFrom()}`);
-    const end = fromLocalInput(`${this.addDate()}T${this.addTo()}`);
+    const start = combine(this.addDate(), this.addFrom());
+    const end = combine(this.addDate(), this.addTo());
     if (!start || !end) {
-      this.tasks.error.set('Enter a date and both times.');
+      this.tasks.error.set('Enter a date and both times (HH:MM, 24 hours).');
       return;
     }
     if (await this.tasks.addEntry(task.id, start, end, this.addNote())) {

@@ -48,7 +48,7 @@ describe('SettingsPage', () => {
     expect(fixture.componentInstance).toBeTruthy();
     const tz = el().querySelector<HTMLInputElement>('input[list=zones]')!;
     expect(tz.value).toBe('Europe/Berlin');
-    expect(el().querySelector<HTMLInputElement>('input[type=time]')!.value).toBe('17:00');
+    expect(el().querySelector<HTMLInputElement>('app-time-field input')!.value).toBe('17:00');
   });
 
   it('saves all settings and reloads the board', async () => {

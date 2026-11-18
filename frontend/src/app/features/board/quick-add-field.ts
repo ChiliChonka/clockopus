@@ -3,6 +3,7 @@ import {
   ElementRef,
   computed,
   input,
+  linkedSignal,
   model,
   output,
   signal,
@@ -24,7 +25,8 @@ export interface QuickAddSubmit {
 
 /**
  * The quick-add field (docs/SPEC.md, section 4.1): `Enter` creates and starts, `Alt+Enter` only
- * creates, `Tab` completes the `#tag` under the caret, the bar below inserts frequent tags.
+ * creates. While a `#tag` is typed, `↑`/`↓` choose a suggestion, `Tab` takes the chosen one (or
+ * the first) and `Enter` takes the chosen one; the bar below inserts frequent tags.
  */
 @Component({
   selector: 'app-quick-add-field',
@@ -45,15 +47,28 @@ export interface QuickAddSubmit {
         (blur)="dismissed.set(true)"
         (focus)="dismissed.set(false)"
         aria-describedby="quick-add-hint"
+        role="combobox"
+        aria-autocomplete="list"
         [attr.aria-expanded]="suggestions().length > 0"
         aria-controls="quick-add-suggestions"
+        [attr.aria-activedescendant]="active() >= 0 ? 'quick-add-option-' + active() : null"
       />
       <button type="submit" class="primary">Start</button>
       @if (suggestions().length) {
         <ul id="quick-add-suggestions" class="suggestions" role="listbox">
-          @for (tag of suggestions(); track tag; let first = $first) {
-            <li role="option" [attr.aria-selected]="first">
-              <button type="button" (mousedown)="$event.preventDefault()" (click)="complete(tag)">
+          @for (tag of suggestions(); track tag; let i = $index) {
+            <li
+              role="option"
+              [id]="'quick-add-option-' + i"
+              [attr.aria-selected]="i === active()"
+              (mouseenter)="active.set(i)"
+            >
+              <button
+                type="button"
+                tabindex="-1"
+                (mousedown)="$event.preventDefault()"
+                (click)="complete(tag)"
+              >
                 #{{ tag }}
               </button>
             </li>
@@ -62,7 +77,7 @@ export interface QuickAddSubmit {
       }
     </form>
     <p id="quick-add-hint" class="hint muted">
-      Enter: create and start · Alt+Enter: only create · Tab: complete tag
+      Enter: create and start · Alt+Enter: only create · #tag: ↑/↓ choose, Tab or Enter take
     </p>
     @if (quickTags().length) {
       <div class="quick-tags" aria-label="Frequent tags">
@@ -97,7 +112,7 @@ export interface QuickAddSubmit {
       text-align: left;
     }
     [aria-selected='true'] button {
-      background: var(--bg);
+      background: color-mix(in srgb, var(--accent) 18%, var(--surface));
     }
     .hint {
       margin: 4px 0 8px;
@@ -117,6 +132,17 @@ export class QuickAddField {
   readonly submitted = output<QuickAddSubmit>();
 
   readonly caret = signal(0);
+  /**
+   * Suggestion chosen with the arrow keys; -1 = none (Tab then takes the first). Reset when the
+   * list *content* changes — not when a background reload of the tags only builds the same list
+   * again (otherwise the choice jumps back while the user is choosing).
+   */
+  readonly active = linkedSignal<string, number>({
+    // A computed in between: linkedSignal re-runs on every evaluation of its source function,
+    // a computed only notifies when the value (here a string) really changes.
+    source: () => this.suggestionKey(),
+    computation: () => -1,
+  });
   readonly dismissed = signal(false);
   private readonly inputEl = viewChild.required<ElementRef<HTMLInputElement>>('input');
 
@@ -133,6 +159,9 @@ export class QuickAddField {
     );
   });
 
+  /** The suggestions as one string, so equal lists compare equal. */
+  private readonly suggestionKey = computed(() => this.suggestions().join('\n'));
+
   focus(): void {
     this.inputEl().nativeElement.focus();
   }
@@ -144,10 +173,19 @@ export class QuickAddField {
   }
 
   onKeydown(event: KeyboardEvent): void {
-    const first = this.suggestions()[0];
-    if (event.key === 'Tab' && first) {
+    const list = this.suggestions();
+    const n = list.length;
+    if (n && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
       event.preventDefault();
-      this.complete(first);
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      const from = this.active() < 0 && step < 0 ? 0 : this.active();
+      this.active.set((from + step + n) % n);
+    } else if (event.key === 'Tab' && n) {
+      event.preventDefault();
+      this.complete(list[Math.max(this.active(), 0)]);
+    } else if (event.key === 'Enter' && n && this.active() >= 0) {
+      event.preventDefault();
+      this.complete(list[this.active()]);
     } else if (event.key === 'Enter') {
       event.preventDefault();
       this.send(!event.altKey);
