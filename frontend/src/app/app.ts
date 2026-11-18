@@ -45,6 +45,16 @@ import { SessionService } from './core/session.service';
     <main>
       <router-outlet />
     </main>
+    @if (session.config()?.version; as version) {
+      <footer>
+        <a
+          href="https://github.com/ChiliChonka/clockopus/releases"
+          target="_blank"
+          rel="noopener noreferrer"
+          >clockopus {{ version }}</a
+        >
+      </footer>
+    }
   `,
   styles: `
     header {
@@ -113,6 +123,15 @@ import { SessionService } from './core/session.service';
       max-width: 1100px;
       margin: 0 auto;
       padding: 16px;
+    }
+    footer {
+      padding: 8px 16px 16px;
+      text-align: center;
+      font-size: 0.75rem;
+    }
+    footer a {
+      color: var(--text-muted);
+      text-decoration: none;
     }
   `,
 })

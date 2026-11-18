@@ -12,8 +12,9 @@ export function parseQuickAdd(text: string): QuickAdd {
   const title: string[] = [];
   for (const word of words) {
     if (word.startsWith('#') && word.length > 1) {
-      const tag = word.slice(1);
-      if (!tags.some((t) => t.toLowerCase() === tag.toLowerCase())) tags.push(tag);
+      // Tags are lower case (stored that way, too).
+      const tag = word.slice(1).toLowerCase();
+      if (!tags.includes(tag)) tags.push(tag);
     } else if (word !== '#') {
       title.push(word);
     }
@@ -61,7 +62,8 @@ export function completeTag(
 
 /** Appends `#tag` to the text (quick-access bar), unless it is already there. */
 export function appendTag(text: string, tag: string): string {
-  if (parseQuickAdd(text).tags.some((t) => t.toLowerCase() === tag.toLowerCase())) return text;
+  const lower = tag.toLowerCase();
+  if (parseQuickAdd(text).tags.includes(lower)) return text;
   const base = text.trimEnd();
-  return `${base}${base ? ' ' : ''}#${tag} `;
+  return `${base}${base ? ' ' : ''}#${lower} `;
 }

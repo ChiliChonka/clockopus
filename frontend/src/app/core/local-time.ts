@@ -27,6 +27,48 @@ export function fromLocalInput(value: string): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
+/**
+ * A time typed in 24-hour form, without seconds: `9`, `930`, `0930`, `9:30`, `9.30`, `09:30`
+ * → `09:30`. `null` for anything that is not a time of day.
+ */
+export function parseHm(text: string): string | null {
+  const t = text.trim();
+  let h: number;
+  let m: number;
+  let match = /^(\d{1,2})[:.](\d{1,2})$/.exec(t);
+  if (match) {
+    h = +match[1];
+    m = +match[2];
+    if (match[2].length === 1) m *= 10; // `9:3` reads as 09:30
+  } else if ((match = /^(\d{1,4})$/.exec(t))) {
+    const digits = match[1];
+    if (digits.length <= 2) {
+      h = +digits;
+      m = 0;
+    } else {
+      h = +digits.slice(0, digits.length - 2);
+      m = +digits.slice(-2);
+    }
+  } else {
+    return null;
+  }
+  if (h > 23 || m > 59) return null;
+  return `${pad(h)}:${pad(m)}`;
+}
+
+/** A local date (`YYYY-MM-DD`) and a typed time; `null` if either is invalid. */
+export function combine(date: string, time: string): Date | null {
+  const hm = parseHm(time);
+  if (!hm || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  return fromLocalInput(`${date}T${hm}`);
+}
+
+/** Local date and `HH:MM` of an instant, for a date field and a time field. */
+export function splitLocal(iso: string): { date: string; time: string } {
+  const d = new Date(iso);
+  return { date: localDate(d), time: localTime(d) };
+}
+
 /** Midnight at the start of a local `YYYY-MM-DD`. */
 export function startOfDay(date: string): Date {
   const [y, m, d] = date.split('-').map(Number);

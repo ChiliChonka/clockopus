@@ -6,9 +6,13 @@ export function formatHm(seconds: number): string {
   return `${h}:${m.toString().padStart(2, '0')}`;
 }
 
-/** `3.5 h` for report totals (one decimal). */
-export function formatHours(seconds: number): string {
-  return `${(Math.max(0, seconds) / 3600).toFixed(1)} h`;
+/** `1h30m`, `2h`, `45m`, `0m` for durations in the day, week and month views. */
+export function formatDuration(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds / 60));
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h === 0) return `${m}m`;
+  return m === 0 ? `${h}h` : `${h}h${m.toString().padStart(2, '0')}m`;
 }
 
 /** `23 h 40 min`, `45 min` in sentences. */

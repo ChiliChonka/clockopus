@@ -23,11 +23,11 @@
         >
       }
     </label>
-    <label>
-      Workday ends at
-      <input type="time" [value]="workdayEnd()" (input)="workdayEnd.set(we.value)" #we />
-      <small>Suggested end for a forgotten timer.</small>
-    </label>
+    <div class="field">
+      <span>Workday ends at</span>
+      <app-time-field label="Workday ends at" [(value)]="workdayEnd" />
+      <small>Suggested end for a forgotten timer (24 hours).</small>
+    </div>
     <label>
       Forgotten after (hours)
       <input

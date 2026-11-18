@@ -64,12 +64,12 @@ describe('DayView', () => {
     // Range starts at 08:00, 1 px per minute.
     expect(blocks[0].style.top).toBe('60px');
     expect(blocks[0].style.height).toBe('90px');
-    expect(blocks[0].textContent).toContain('09:00–10:30 · 1:30');
+    expect(blocks[0].textContent).toContain('09:00–10:30 · 1h30m');
   });
 
   it('sums per task and per tag', () => {
     const aside = el().querySelector('aside')!;
-    expect(aside.querySelector('.total')!.textContent).toContain('2:00');
+    expect(aside.querySelector('.total')!.textContent).toContain('2h');
     // Columns are separate spans; read them as such.
     const rows = [...aside.querySelectorAll('li')].map((li) =>
       [...li.querySelectorAll('span')]
@@ -78,12 +78,53 @@ describe('DayView', () => {
         .join(' '),
     );
     expect(rows).toEqual([
-      'Review 1:30',
-      'Mail 0:30',
-      '#review 1.5 h',
-      '#team-a 1.5 h',
-      'untagged 0.5 h',
+      'Review 1h30m',
+      'Mail 30m',
+      '#review 1h30m',
+      '#team-a 1h30m',
+      'untagged 30m',
     ]);
+  });
+
+  function pick(label: string, init: MouseEventInit = {}) {
+    const button = [...el().querySelectorAll<HTMLButtonElement>('aside .pickable button')].find(
+      (b) => b.querySelector('.name')!.textContent!.trim() === label,
+    )!;
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true, ...init }));
+    return button;
+  }
+
+  const dimmed = () =>
+    [...el().querySelectorAll('.block')].map((b) => b.classList.contains('dimmed'));
+
+  it('a click on a task highlights only its entries; a second click clears', async () => {
+    expect(dimmed()).toEqual([false, false]);
+    const button = pick('Mail');
+    await fixture.whenStable();
+    expect(dimmed()).toEqual([true, false]);
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    expect(el().querySelector('.picked strong')!.textContent).toBe('30m');
+    pick('Mail');
+    await fixture.whenStable();
+    expect(dimmed()).toEqual([false, false]);
+    expect(el().querySelector('p.picked')).toBeNull();
+  });
+
+  it('a tag highlights the tasks carrying it; Ctrl+click adds more', async () => {
+    pick('#team-a');
+    await fixture.whenStable();
+    expect(dimmed()).toEqual([false, true]);
+    pick('untagged', { ctrlKey: true });
+    await fixture.whenStable();
+    expect(dimmed()).toEqual([false, false]);
+    expect(el().querySelector('.picked strong')!.textContent).toBe('2h');
+    // A plain click replaces the selection.
+    pick('Review');
+    await fixture.whenStable();
+    expect(dimmed()).toEqual([false, true]);
+    el().querySelector<HTMLButtonElement>('p.picked button')!.click();
+    await fixture.whenStable();
+    expect(dimmed()).toEqual([false, false]);
   });
 
   it('dragging the bottom edge sets a new end, snapped to 5 minutes', async () => {

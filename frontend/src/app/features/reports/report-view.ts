@@ -1,7 +1,7 @@
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { AccountService } from '../../core/account.service';
-import { formatHm, formatHours } from '../../core/format';
+import { formatDuration } from '../../core/format';
 import {
   addDays,
   localDate,
@@ -12,6 +12,7 @@ import {
   startOfDay,
   weekRange,
 } from '../../core/local-time';
+import { SelectionService } from '../../core/selection.service';
 import { SessionService } from '../../core/session.service';
 import { TasksService, errorMessage } from '../../core/tasks.service';
 import { Report } from '../../core/wire';
@@ -93,16 +94,40 @@ export class ReportView {
     const r = this.report();
     if (!r) return [];
     return r.by_task.map((t) => ({
+      taskId: t.task_id,
       title: t.title,
       total: t.seconds,
+      highlighted: this.selection.matches(t.task_id, t.tags),
       days: r.days.map((d) => d.by_task.find((x) => x.task_id === t.task_id)?.seconds ?? 0),
     }));
   });
 
-  /** Month calendar: weeks of days with totals and a 0..1 intensity. */
+  /** Tags per task, to decide whether a task's time is highlighted. */
+  private readonly tagsOf = computed(
+    () => new Map((this.report()?.by_task ?? []).map((t) => [t.task_id, t.tags])),
+  );
+
+  /** Seconds per day of the highlighted tasks (all tasks without a selection). */
+  readonly dayTotals = computed(() => {
+    const tags = this.tagsOf();
+    return new Map(
+      (this.report()?.days ?? []).map((d) => [
+        d.date,
+        d.by_task
+          .filter((x) => this.selection.matches(x.task_id, tags.get(x.task_id) ?? []))
+          .reduce((sum, x) => sum + x.seconds, 0),
+      ]),
+    );
+  });
+
+  /** Total of the highlighted time in the period. */
+  readonly selectedSeconds = computed(() =>
+    [...this.dayTotals().values()].reduce((sum, s) => sum + s, 0),
+  );
+
+  /** Month calendar: weeks of days with totals and a 0..1 intensity (of the highlighted time). */
   readonly calendar = computed(() => {
-    const r = this.report();
-    const totals = new Map((r?.days ?? []).map((d) => [d.date, d.total_seconds]));
+    const totals = this.dayTotals();
     const max = Math.max(1, ...totals.values());
     const [first, last] = this.range();
     return monthGrid(this.range()[0], this.weekStart()).map((week) =>
@@ -125,8 +150,12 @@ export class ReportView {
     ),
   );
 
-  protected readonly hm = formatHm;
-  protected readonly hours = formatHours;
+  protected readonly hm = formatDuration;
+  protected readonly selection = inject(SelectionService);
+
+  pick(event: MouseEvent): boolean {
+    return event.ctrlKey || event.metaKey;
+  }
   protected readonly shortDay = shortDay;
 
   constructor() {

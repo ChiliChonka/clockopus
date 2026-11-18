@@ -74,7 +74,7 @@ jobs:
         run: |
           docker run -d --name smoke -p 127.0.0.1:8080:8080 -e CLOCKOPUS_AUTH=none clockopus:ci
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8080/healthz && break; sleep 1; done
-          test "$(curl -fsS http://127.0.0.1:8080/api/v1/config)" = '{"auth":"none"}'
+          curl -fsS http://127.0.0.1:8080/api/v1/config | grep -q '"auth":"none"'
           curl -fsS http://127.0.0.1:8080/ | grep -q '<app-root'
       - if: always()
         run: docker logs smoke || true

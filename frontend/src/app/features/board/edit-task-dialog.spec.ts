@@ -72,7 +72,7 @@ describe('EditTaskDialog', () => {
     });
   });
 
-  it('adds time from date and two times', async () => {
+  it('adds time from a date and two 24-hour times', async () => {
     await open();
     const set = (sel: string, v: string) => {
       const i = el().querySelector<HTMLInputElement>(sel)!;
@@ -80,8 +80,10 @@ describe('EditTaskDialog', () => {
       i.dispatchEvent(new Event('input'));
     };
     set('form.add input[type=date]', '2026-11-16');
-    const times = el().querySelectorAll<HTMLInputElement>('form.add input[type=time]');
-    times[0].value = '14:00';
+    expect(el().querySelectorAll('form.add input[type=time]').length).toBe(0);
+    const times = el().querySelectorAll<HTMLInputElement>('form.add app-time-field input');
+    expect(times.length).toBe(2);
+    times[0].value = '1400';
     times[0].dispatchEvent(new Event('input'));
     times[1].value = '15:30';
     times[1].dispatchEvent(new Event('input'));
@@ -98,7 +100,7 @@ describe('EditTaskDialog', () => {
     await open();
     await fixture.componentInstance.addTime(taskView({ id: 't' }));
     expect(service.addEntry).not.toHaveBeenCalled();
-    expect(service.error()).toBe('Enter a date and both times.');
+    expect(service.error()).toBe('Enter a date and both times (HH:MM, 24 hours).');
     service.error.set(null);
   });
 

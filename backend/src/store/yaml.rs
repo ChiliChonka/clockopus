@@ -418,7 +418,7 @@ fn from_files(
             })
         })
         .collect::<anyhow::Result<_>>()?;
-    Ok(UserData {
+    let mut data = UserData {
         settings: Settings {
             timezone: settings.timezone,
             workday_end: match settings.workday_end.as_deref() {
@@ -446,7 +446,11 @@ fn from_files(
                 color: t.color,
             })
             .collect(),
-    })
+    };
+    // Files (and exports) from before 0.2 may hold mixed-case tags; the next write stores them
+    // in lower case.
+    data.lowercase_tags();
+    Ok(data)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -764,5 +768,39 @@ tasks:
             .unwrap();
         assert_eq!(before, after);
         assert_eq!(after.tasks[0].entries[0].history.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn mixed_case_tags_from_older_files_are_lowered() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("local")).unwrap();
+        fs::write(
+            dir.path().join("local/tags.yaml"),
+            "version: 1
+tags:
+  - name: Support
+  - name: Team-A
+",
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join("local/tasks.yaml"),
+            r#"version: 1
+tasks:
+  - id: 0193a1c2-7d40-7b1e-9c3a-2f1d5e6a8b90
+    title: Fix
+    tags: [Support, Team-A]
+    status: active
+    created_at: "2026-11-17T09:12:00+01:00"
+"#,
+        )
+        .unwrap();
+        let data = YamlStore::new(dir.path())
+            .read("local", Clone::clone)
+            .await
+            .unwrap();
+        assert_eq!(data.tasks[0].tags, vec!["support", "team-a"]);
+        let names: Vec<_> = data.tags.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(names, vec!["support", "team-a"]);
     }
 }

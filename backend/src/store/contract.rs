@@ -120,7 +120,8 @@ async fn create_start_switch_stop_and_reopen(backend: &Backend) {
     assert!(totals.contains(&(b, 30 * 60)), "{totals:?}");
     assert_eq!(seen.running(), None);
     let review = seen.tasks.iter().find(|t| t.id == a).unwrap();
-    assert_eq!(review.tags, vec!["review", "Team-A"]);
+    // Tags are stored in lower case (0.2).
+    assert_eq!(review.tags, vec!["review", "team-a"]);
     assert_eq!(seen.settings.timezone.as_deref(), Some("Europe/Berlin"));
 }
 

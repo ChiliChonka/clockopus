@@ -1,6 +1,7 @@
 import { Component, computed, input, linkedSignal, output, signal } from '@angular/core';
-import { formatHm } from '../../core/format';
-import { fromLocalInput, localDate, localTime, toLocalInput } from '../../core/local-time';
+import { formatDuration } from '../../core/format';
+import { combine, localDate, localTime, splitLocal } from '../../core/local-time';
+import { TimeField } from '../../core/time-field';
 import { EntryView } from '../../core/wire';
 
 export interface EntryChange {
@@ -12,28 +13,31 @@ export interface EntryChange {
 /** One time entry, editable in place: start, end, note; history on demand (R6). */
 @Component({
   selector: 'app-entry-row',
+  imports: [TimeField],
   template: `
     <form class="row" (submit)="$event.preventDefault(); submit()">
-      <label>
-        <span class="sr-only">Start</span>
+      <span class="when">
         <input
-          type="datetime-local"
-          [value]="start()"
-          (input)="start.set(startInput.value)"
-          #startInput
+          type="date"
+          aria-label="Start date"
+          [value]="startDate()"
+          (input)="startDate.set(sd.value)"
+          #sd
         />
-      </label>
+        <app-time-field label="Start time" [(value)]="startTime" />
+      </span>
       <span aria-hidden="true">–</span>
       @if (entry().end) {
-        <label>
-          <span class="sr-only">End</span>
+        <span class="when">
           <input
-            type="datetime-local"
-            [value]="end()"
-            (input)="end.set(endInput.value)"
-            #endInput
+            type="date"
+            aria-label="End date"
+            [value]="endDate()"
+            (input)="endDate.set(ed.value)"
+            #ed
           />
-        </label>
+          <app-time-field label="End time" [(value)]="endTime" />
+        </span>
       } @else {
         <span class="running">running</span>
       }
@@ -84,6 +88,10 @@ export interface EntryChange {
       gap: 6px;
       align-items: center;
     }
+    .when {
+      display: inline-flex;
+      gap: 4px;
+    }
     input {
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -132,23 +140,35 @@ export class EntryRow {
   readonly save = output<EntryChange>();
   readonly remove = output<void>();
 
-  readonly start = linkedSignal(() => toLocalInput(this.entry().start));
-  readonly end = linkedSignal(() => (this.entry().end ? toLocalInput(this.entry().end!) : ''));
+  private readonly startParts = computed(() => splitLocal(this.entry().start));
+  private readonly endParts = computed(() =>
+    this.entry().end ? splitLocal(this.entry().end!) : { date: '', time: '' },
+  );
+  readonly startDate = linkedSignal(() => this.startParts().date);
+  readonly startTime = linkedSignal(() => this.startParts().time);
+  readonly endDate = linkedSignal(() => this.endParts().date);
+  readonly endTime = linkedSignal(() => this.endParts().time);
   readonly note = linkedSignal(() => this.entry().note ?? '');
   readonly showHistory = signal(false);
   readonly invalid = signal<string | null>(null);
 
-  readonly changed = computed(
-    () =>
-      this.start() !== toLocalInput(this.entry().start) ||
-      (this.entry().end !== null && this.end() !== toLocalInput(this.entry().end!)) ||
-      this.note() !== (this.entry().note ?? ''),
+  private readonly start = computed(() => combine(this.startDate(), this.startTime()));
+  private readonly end = computed(() =>
+    this.entry().end ? combine(this.endDate(), this.endTime()) : new Date(),
   );
 
+  readonly changed = computed(() => {
+    const original = new Date(this.entry().start).getTime();
+    const startChanged = this.start()?.getTime() !== original;
+    const endChanged =
+      this.entry().end !== null && this.end()?.getTime() !== new Date(this.entry().end!).getTime();
+    return startChanged || endChanged || this.note() !== (this.entry().note ?? '');
+  });
+
   readonly duration = computed(() => {
-    const start = fromLocalInput(this.start());
-    const end = this.entry().end ? fromLocalInput(this.end()) : new Date();
-    return start && end ? formatHm((end.getTime() - start.getTime()) / 1000) : '';
+    const start = this.start();
+    const end = this.end();
+    return start && end ? formatDuration((end.getTime() - start.getTime()) / 1000) : '';
   });
 
   when(iso: string): string {
@@ -158,14 +178,14 @@ export class EntryRow {
 
   submit(): void {
     const change: EntryChange = {};
-    const start = fromLocalInput(this.start());
-    if (!start) return this.invalid.set('The start is not a valid time.');
-    if (this.start() !== toLocalInput(this.entry().start)) change.start = start;
+    const start = this.start();
+    if (!start) return this.invalid.set('The start is not a valid date and time (HH:MM).');
+    if (start.getTime() !== new Date(this.entry().start).getTime()) change.start = start;
     if (this.entry().end) {
-      const end = fromLocalInput(this.end());
-      if (!end) return this.invalid.set('The end is not a valid time.');
+      const end = this.end();
+      if (!end) return this.invalid.set('The end is not a valid date and time (HH:MM).');
       if (end <= start) return this.invalid.set('The end must be after the start.');
-      if (this.end() !== toLocalInput(this.entry().end!)) change.end = end;
+      if (end.getTime() !== new Date(this.entry().end!).getTime()) change.end = end;
     }
     if (this.note() !== (this.entry().note ?? '')) change.note = this.note();
     this.invalid.set(null);

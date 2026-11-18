@@ -9,8 +9,9 @@ import {
   untracked,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { formatHm, formatHours } from '../../core/format';
+import { formatDuration } from '../../core/format';
 import { addDays, localDate, localTime, longDate } from '../../core/local-time';
+import { SelectionService } from '../../core/selection.service';
 import { SessionService } from '../../core/session.service';
 import { TasksService } from '../../core/tasks.service';
 import { EntryView } from '../../core/wire';
@@ -73,6 +74,7 @@ interface Drag {
               <div
                 class="block c{{ b.color }}"
                 [class.selected]="selectedId() === b.entry.id"
+                [class.dimmed]="!selection.matches(b.entry.task_id, b.entry.tags)"
                 [class.running]="b.running"
                 [style.top.px]="top(b)"
                 [style.height.px]="height(b)"
@@ -114,26 +116,49 @@ interface Drag {
         <p class="total">
           Total <strong>{{ hm(sums().totalSeconds) }}</strong>
         </p>
-        <ul class="list">
+        @if (selection.active()) {
+          <p class="picked">
+            Selected <strong>{{ hm(selectedSeconds()) }}</strong>
+            <button type="button" class="link" (click)="selection.clear()">Clear</button>
+          </p>
+        }
+        <ul class="list pickable">
           @for (t of sums().byTask; track t.taskId) {
             <li>
-              <span class="swatch c{{ t.color }}"></span>
-              <span class="name">{{ t.title }}</span>
-              <span class="num">{{ hm(t.seconds) }}</span>
+              <button
+                type="button"
+                [class.picked]="selection.hasTask(t.taskId)"
+                [attr.aria-pressed]="selection.hasTask(t.taskId)"
+                (click)="selection.toggleTask(t.taskId, $event.ctrlKey || $event.metaKey)"
+              >
+                <span class="swatch c{{ t.color }}"></span>
+                <span class="name">{{ t.title }}</span>
+                <span class="num">{{ hm(t.seconds) }}</span>
+              </button>
             </li>
           }
         </ul>
         @if (sums().byTag.length) {
-          <h3>Hours per tag</h3>
-          <ul class="list">
+          <h3>Time per tag</h3>
+          <ul class="list pickable">
             @for (t of sums().byTag; track t.tag) {
               <li>
-                <span class="name">{{ t.tag ? '#' + t.tag : 'untagged' }}</span>
-                <span class="num">{{ tagHours(t.seconds) }}</span>
+                <button
+                  type="button"
+                  [class.picked]="selection.hasTag(t.tag)"
+                  [attr.aria-pressed]="selection.hasTag(t.tag)"
+                  (click)="selection.toggleTag(t.tag, $event.ctrlKey || $event.metaKey)"
+                >
+                  <span class="name">{{ t.tag ? '#' + t.tag : 'untagged' }}</span>
+                  <span class="num">{{ hm(t.seconds) }}</span>
+                </button>
               </li>
             }
           </ul>
-          <p class="muted hint">A task with several tags counts fully for each of them.</p>
+          <p class="muted hint">
+            A task with several tags counts fully for each of them. Click to highlight, Ctrl/⌘+click
+            to add more.
+          </p>
         }
       </aside>
     </div>
@@ -179,6 +204,12 @@ export class DayView {
     return Array.from({ length: to - from + 1 }, (_, i) => from + i);
   });
   readonly sums = computed(() => totals(this.blocks()));
+  /** Time of the highlighted entries on this day. */
+  readonly selectedSeconds = computed(() =>
+    this.blocks()
+      .filter((b) => this.selection.matches(b.entry.task_id, b.entry.tags))
+      .reduce((sum, b) => sum + Math.round((b.endMin - b.startMin) * 60), 0),
+  );
   readonly selected = computed(
     () => this.entries().find((e) => e.id === this.selectedId()) ?? null,
   );
@@ -202,8 +233,8 @@ export class DayView {
     }
   }
 
-  protected readonly hm = formatHm;
-  protected readonly tagHours = formatHours;
+  protected readonly hm = formatDuration;
+  protected readonly selection = inject(SelectionService);
 
   top(b: Block): number {
     return (b.startMin - this.range()[0] * 60) * PX;
@@ -216,7 +247,7 @@ export class DayView {
   label(b: Block): string {
     const start = localTime(minuteToDate(this.day(), b.startMin));
     const end = b.running ? 'now' : localTime(minuteToDate(this.day(), b.endMin));
-    return `${start}–${end} · ${formatHm((b.endMin - b.startMin) * 60)}`;
+    return `${start}–${end} · ${formatDuration((b.endMin - b.startMin) * 60)}`;
   }
 
   onPointerDown(event: PointerEvent, block: Block, edge: 'start' | 'end'): void {
