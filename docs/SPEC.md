@@ -22,7 +22,7 @@ context switches.
 | Term | Meaning |
 |---|---|
 | **User** | Created on first sign-in, identified by `(issuer, sub)`. Holds settings. |
-| **Task** | Something you spend time on. Title (required), tags (optional), link (optional URL), status `active` or `done`, pinned flag. Belongs to one user. |
+| **Task** | Something you spend time on. Title (required), tags (optional), link (optional URL), notes (optional free text over several lines), status `active` or `done`, pinned flag. Belongs to one user. |
 | **Time entry** | A span of time on one task: `start`, `end` (empty while running), `source` (`timer` or `manual`), optional note, history of corrections. |
 | **Tag** | A label, per user, **lower case** (stored that way; data from before 0.2 is lowered on read or by migration). Optional colour. |
 | **Settings** | Time zone (IANA), workday end (default `17:00`), forgotten-timer threshold (default 10 h), week start (default Monday), CSV rounding. |
@@ -84,7 +84,8 @@ setting, fully usable with the keyboard.
   `Enter` takes the chosen one, `Esc` closes the list.
 - **Quick-access tag bar** below it: clicking a tag inserts it into the quick-add field.
 - **Cards**, ordered: running task first, then pinned tasks, then by `last_used_at`. A card shows
-  title, tags, link icon, time tracked today, and the buttons **Start**/**Stop** and **Edit**.
+  title, tags, link icon, a 📝 marker when the task has notes (never the notes themselves; a
+  click opens the edit dialog), time tracked today, and the buttons **Start**/**Stop** and **Edit**.
   Menu: pin, mark done, delete. The running card is highlighted and shows elapsed time live.
 - **Filter** by text or tag above the cards; toggle to show done tasks.
 - **Browser tab title** while a timer runs: `▶ 0:42 Fix login bug`.
@@ -92,8 +93,13 @@ setting, fully usable with the keyboard.
 
 ### 4.2 Edit dialog (per task)
 
-Title, tags, link; list of the task's time entries (newest first) with inline editing of start,
-end and note; **Add time** for a manual entry; history of an entry shown on demand.
+Title, tags, link, **notes**; list of the task's time entries (newest first) with inline editing
+of start, end and note; **Add time** for a manual entry; history of an entry shown on demand.
+
+**Notes** are free text over several lines (at most 20,000 characters), changed only here and
+saved with **Save task** (or `Ctrl`/`⌘`+`Enter` in the field). Line breaks and indentation are
+kept, the text as a whole is trimmed, an empty field removes the notes. The server remembers when
+the notes last changed; saving the same text again does not move that date.
 
 **Times are entered in 24-hour form without seconds**, in a text field (`930`, `9:30`, `9.30` →
 `09:30`), next to a date field. The browser's own time fields follow the browser language (AM/PM
@@ -119,7 +125,20 @@ Range selector: **Day**, **Week**, **Month**, custom range; previous/next; “to
 - Format: day, week and month views write durations as `1h30m` (`45m`, `2h`, `1h05m`); cards
   on the board and the running timer keep `h:mm` / `h:mm:ss`.
 
-### 4.4 Settings
+### 4.5 Notes
+
+A view of its own (**Notes** in the navigation): the notes of all tasks with one tag, one below
+the other, newest activity first. Each shows title, tags (a click switches to that tag), link,
+when the notes last changed, the time on the task in the period, and **Edit** (the dialog of 4.2).
+
+- **Tag:** one tag, or all tags.
+- **Period:** last month (default), last 3 months, last 12 months, all time, or a custom range
+  (local days). A task belongs to a period when it has time in it, its notes changed in it or it
+  was created in it; a note written long ago on a task you are still working on stays visible.
+- The choice is part of the address (`/notes?tag=team-a&period=3m`), so a reload or a bookmark
+  keeps it.
+
+### 4.6 Settings
 
 Time zone (pre-filled from the browser on first sign-in), workday end, forgotten-timer threshold,
 week start, CSV rounding. **Export my data** (YAML archive), **Import** (into an empty account
@@ -162,6 +181,10 @@ tasks:
     title: Fix login bug
     tags: [support, customer-x]
     link: https://jira.example.com/browse/ABC-123
+    notes: |-
+      Login fails only behind the proxy.
+        - check cookie domain
+    notes_changed_at: "2026-11-17T11:02:00+01:00"
     status: active          # active | done
     pinned: false
     created_at: "2026-11-17T09:12:00+01:00"
@@ -210,13 +233,14 @@ is stopped.
 
 ### 6.2 PostgreSQL (backend `postgres`)
 
-Migrations in `backend/migrations/`, applied at startup. Tables (`0001_init.sql`):
+Migrations in `backend/migrations/`, applied at startup. Tables (`0001_init.sql`; tag names lower
+case since `0002`, task notes since `0003`):
 
 | Table | Content |
 |---|---|
 | `users` | `key` (the user), `version` (grows with every change), the settings as columns |
 | `tags` | `user_key`, `name`, `color`, `position` (order of creation) |
-| `tasks` | the task fields; `tags` as `text[]` in the user's order |
+| `tasks` | the task fields; `tags` as `text[]` in the user's order; `notes`, `notes_changed_at` |
 | `entries` | `task_id`, `user_key`, `start_at`, `end_at`, `source`, `note`, `keep_running`, `history` (`jsonb`, epoch seconds) |
 
 Database-enforced invariants, as a backstop to the domain code:
@@ -245,13 +269,14 @@ in whole seconds. Errors: `{"error": "<stable code>", "message": "<for people>"}
 | `GET /me`, `DELETE /me` | Current user; delete all data of the user (`204`) |
 | `GET/PUT /me/settings` | `timezone`, `workday_end` (`HH:MM`), `forgotten_after_hours` (1–24), `week_start` (`monday`/`sunday`), `csv_rounding` (0/5/15); `PUT` changes only the given fields. The frontend sends the browser's time zone on the first visit. |
 | `GET /tasks?status=active\|done\|all`, `POST /tasks` | List in board order with `today_seconds`, `total_seconds`, `running_since`; create (optionally `start: true`). Filtering by text or tag happens in the browser. |
-| `PATCH /tasks/{id}`, `DELETE /tasks/{id}` | Edit (only the given fields; `link: ""` removes the link), delete |
+| `PATCH /tasks/{id}`, `DELETE /tasks/{id}` | Edit (only the given fields; `link: ""` removes the link, `notes: ""` the notes), delete |
 | `POST /tasks/{id}/start`, `POST /timer/stop` | Start (R2), stop (optional `end`; with `"reason": "forgotten-timer"` the R8 correction, which needs `end` and is recorded in the history); stopping when nothing runs is not an error |
 | `GET /timer` | `{"running": …, "forgotten": null \| {task_title, start, running_seconds, suggested_end}}` (R7/R8) |
 | `POST /timer/keep-running` | R8 “Keep running” |
 | `GET/POST /tasks/{id}/entries`, `PATCH/DELETE /entries/{id}` | Time entries of a task (newest first) with `history`; add (R4/R5); change `start`/`end`/`note` (R6; the end of a running entry is set by stopping it); delete |
 | `GET /entries?from=YYYY-MM-DD&to=YYYY-MM-DD` | Entries touching these local days (at most 366), for the day view |
 | `GET /tags`, `PATCH /tags/{name}`, `DELETE /tags/{name}` | Tags with usage; rename; delete |
+| `GET /notes?tag=&from=&to=` | Tasks with notes (task fields plus `period_seconds`), newest activity first; `tag` optional, `from`/`to` (local days) both or neither (all time); section 4.5 |
 | `GET /reports?from=&to=` | `total_seconds`, `days` (every day of the range with its tasks), `by_task`, `by_tag` (variant A, `tag: null` = untagged); dates in the user's time zone, at most 366 days |
 | `GET /export.csv?from=&to=&round=` | CSV download (section 5); `round` defaults to the setting |
 | `GET /export`, `POST /import` | YAML download of all data; import of such a file into an empty account (`204`; `400 account_not_empty` / `import_invalid`) |

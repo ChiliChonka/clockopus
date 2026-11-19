@@ -69,7 +69,30 @@ describe('EditTaskDialog', () => {
       title: 'Fix login bug fast',
       tags: ['support', 'urgent'],
       link: 'https://jira.example.com/ABC-1',
+      notes: '',
     });
+  });
+
+  it('shows the notes and saves them with the task, also with Ctrl+Enter', async () => {
+    fixture.componentRef.setInput(
+      'task',
+      taskView({ id: 't', title: 'Plan', notes: 'Agenda\n  - budget' }),
+    );
+    await fixture.whenStable();
+    const area = el().querySelector<HTMLTextAreaElement>('form.task textarea')!;
+    expect(area.value).toBe('Agenda\n  - budget');
+
+    area.value = 'Agenda\n  - budget\n  - hiring';
+    area.dispatchEvent(new Event('input'));
+    area.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true }));
+    expect(service.update).toHaveBeenCalledWith(
+      't',
+      expect.objectContaining({ notes: 'Agenda\n  - budget\n  - hiring' }),
+    );
+    // A plain Enter is a new line, not a save.
+    service.update.mockClear();
+    area.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(service.update).not.toHaveBeenCalled();
   });
 
   it('adds time from a date and two 24-hour times', async () => {

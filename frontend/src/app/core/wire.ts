@@ -9,6 +9,9 @@ export interface TaskView {
   title: string;
   tags: string[];
   link: string | null;
+  /** Several lines; the board shows only a marker. */
+  notes: string | null;
+  notes_changed_at: string | null;
   status: TaskStatus;
   pinned: boolean;
   created_at: string;
@@ -16,6 +19,12 @@ export interface TaskView {
   running_since: string | null;
   today_seconds: number;
   total_seconds: number;
+}
+
+/** `GET /api/v1/notes` (backend/src/notes.rs): a task with notes. */
+export interface NoteView extends TaskView {
+  /** Time on the task in the period (all time without one). */
+  period_seconds: number;
 }
 
 export interface TagView {
@@ -149,6 +158,8 @@ export interface UpdateTaskWire {
   title?: string;
   tags?: string[];
   link?: string;
+  /** `''` removes the notes. */
+  notes?: string;
   pinned?: boolean;
   status?: TaskStatus;
 }
@@ -159,6 +170,7 @@ export function toUpdateTaskWire(patch: UpdateTaskWire): UpdateTaskWire {
   if (patch.title !== undefined) out.title = patch.title;
   if (patch.tags !== undefined) out.tags = patch.tags;
   if (patch.link !== undefined) out.link = patch.link;
+  if (patch.notes !== undefined) out.notes = patch.notes;
   if (patch.pinned !== undefined) out.pinned = patch.pinned;
   if (patch.status !== undefined) out.status = patch.status;
   return out;

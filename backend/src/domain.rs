@@ -14,6 +14,8 @@ pub const MAX_TITLE_LEN: usize = 200;
 pub const MAX_TAG_LEN: usize = 40;
 pub const MAX_TAGS_PER_TASK: usize = 10;
 pub const MAX_LINK_LEN: usize = 2000;
+/// Notes of one task, in characters (about ten pages of text).
+pub const MAX_NOTES_LEN: usize = 20_000;
 /// Tags with the most tracked time in this window fill the quick-access bar.
 pub const TAG_USAGE_WINDOW: SignedDuration = SignedDuration::from_hours(30 * 24);
 
@@ -37,6 +39,10 @@ pub struct Task {
     pub title: String,
     pub tags: Vec<String>,
     pub link: Option<String>,
+    /// Free text, several lines; only changed in the edit dialog.
+    pub notes: Option<String>,
+    /// When `notes` last changed; `None` while there are none.
+    pub notes_changed_at: Option<Timestamp>,
     pub status: TaskStatus,
     pub pinned: bool,
     pub created_at: Timestamp,
@@ -229,6 +235,25 @@ pub fn normalize_link(link: Option<&str>) -> Result<Option<String>, DomainError>
     Ok(Some(link.to_owned()))
 }
 
+/// Keeps line breaks (as `\n`) and indentation; trims the text as a whole. Empty means none.
+pub fn normalize_notes(notes: Option<&str>) -> Result<Option<String>, DomainError> {
+    let Some(notes) = notes else {
+        return Ok(None);
+    };
+    let notes = notes.replace("\r\n", "\n").replace('\r', "\n");
+    let notes = notes.trim();
+    if notes.is_empty() {
+        return Ok(None);
+    }
+    if notes.chars().count() > MAX_NOTES_LEN {
+        return Err(invalid(
+            "notes_too_long",
+            format!("Notes can have at most {MAX_NOTES_LEN} characters."),
+        ));
+    }
+    Ok(Some(notes.to_owned()))
+}
+
 pub fn validate_timezone(name: &str) -> Result<String, DomainError> {
     let name = name.trim();
     TimeZone::get(name)
@@ -254,6 +279,8 @@ pub struct TaskPatch {
     pub tags: Option<Vec<String>>,
     /// `Some("")` removes the link.
     pub link: Option<String>,
+    /// `Some("")` removes the notes.
+    pub notes: Option<String>,
     pub pinned: Option<bool>,
     pub status: Option<TaskStatus>,
 }
@@ -335,6 +362,8 @@ impl UserData {
             title,
             tags,
             link,
+            notes: None,
+            notes_changed_at: None,
             status: TaskStatus::Active,
             pinned: false,
             created_at: now,
@@ -425,6 +454,11 @@ impl UserData {
             .as_deref()
             .map(|l| normalize_link(Some(l)))
             .transpose()?;
+        let notes = patch
+            .notes
+            .as_deref()
+            .map(|n| normalize_notes(Some(n)))
+            .transpose()?;
         if !self.tasks.iter().any(|t| t.id == id) {
             return Err(DomainError::NotFound);
         }
@@ -443,6 +477,13 @@ impl UserData {
         }
         if let Some(link) = link {
             task.link = link;
+        }
+        // Saving the dialog sends the notes every time; only a real change moves the date.
+        if let Some(notes) = notes
+            && notes != task.notes
+        {
+            task.notes_changed_at = notes.as_ref().map(|_| truncate(now));
+            task.notes = notes;
         }
         if let Some(pinned) = patch.pinned {
             task.pinned = pinned;
@@ -498,6 +539,9 @@ pub struct TaskView {
     pub title: String,
     pub tags: Vec<String>,
     pub link: Option<String>,
+    /// The board shows only a marker; the text is for the edit dialog.
+    pub notes: Option<String>,
+    pub notes_changed_at: Option<Timestamp>,
     pub status: TaskStatus,
     pub pinned: bool,
     pub created_at: Timestamp,
@@ -531,6 +575,8 @@ impl UserData {
                 title: t.title.clone(),
                 tags: t.tags.clone(),
                 link: t.link.clone(),
+                notes: t.notes.clone(),
+                notes_changed_at: t.notes_changed_at,
                 status: t.status,
                 pinned: t.pinned,
                 created_at: t.created_at,
@@ -994,6 +1040,87 @@ mod tests {
         assert_eq!(
             order,
             vec![("review", 3600, 1), ("meeting", 0, 2), ("legacy", 0, 1)]
+        );
+    }
+
+    fn notes_patch(text: &str) -> TaskPatch {
+        TaskPatch {
+            notes: Some(text.into()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn notes_keep_their_lines_and_the_date_moves_only_on_a_change() {
+        let mut d = UserData::default();
+        let a = task(&mut d, "A", &["review"], "2026-11-01T08:00:00Z");
+        let t = |d: &UserData| d.tasks[0].clone();
+        assert_eq!(t(&d).notes, None);
+
+        // Windows line breaks become \n, indentation stays, the whole text is trimmed.
+        d.update_task(
+            a,
+            notes_patch("\r\nFirst line\r\n  - point\r\n\n"),
+            ts("2026-11-02T10:00:00Z"),
+        )
+        .unwrap();
+        assert_eq!(t(&d).notes.as_deref(), Some("First line\n  - point"));
+        assert_eq!(t(&d).notes_changed_at, Some(ts("2026-11-02T10:00:00Z")));
+
+        // The dialog sends the notes on every save: the same text keeps the date.
+        d.update_task(
+            a,
+            notes_patch("First line\n  - point"),
+            ts("2026-11-03T10:00:00Z"),
+        )
+        .unwrap();
+        assert_eq!(t(&d).notes_changed_at, Some(ts("2026-11-02T10:00:00Z")));
+        // Other fields alone do not touch the notes.
+        d.update_task(
+            a,
+            TaskPatch {
+                title: Some("A2".into()),
+                ..Default::default()
+            },
+            ts("2026-11-03T11:00:00Z"),
+        )
+        .unwrap();
+        assert_eq!(t(&d).notes.as_deref(), Some("First line\n  - point"));
+
+        d.update_task(a, notes_patch("Changed"), ts("2026-11-04T10:00:00Z"))
+            .unwrap();
+        assert_eq!(t(&d).notes_changed_at, Some(ts("2026-11-04T10:00:00Z")));
+
+        // Empty (or only spaces) removes them, and the date with them.
+        d.update_task(a, notes_patch("  \n "), ts("2026-11-05T10:00:00Z"))
+            .unwrap();
+        assert_eq!((t(&d).notes, t(&d).notes_changed_at), (None, None));
+
+        // Too long: refused, nothing changed. The limit counts characters, not bytes.
+        let long = "x".repeat(MAX_NOTES_LEN + 1);
+        let err = d
+            .update_task(a, notes_patch(&long), ts("2026-11-06T10:00:00Z"))
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            DomainError::Invalid {
+                code: "notes_too_long",
+                ..
+            }
+        ));
+        assert_eq!(t(&d).notes, None);
+        d.update_task(
+            a,
+            notes_patch(&"ä".repeat(MAX_NOTES_LEN)),
+            ts("2026-11-06T10:00:00Z"),
+        )
+        .unwrap();
+
+        // The view carries them for the edit dialog.
+        let v = d.task_views(StatusFilter::All, ts("2026-11-06T11:00:00Z"));
+        assert_eq!(
+            v[0].notes.as_ref().map(|n| n.chars().count()),
+            Some(MAX_NOTES_LEN)
         );
     }
 }

@@ -62,9 +62,10 @@ describe('App', () => {
       ['Day', '/day'],
       ['Week', '/week'],
       ['Month', '/month'],
+      ['Notes', '/notes'],
       ['⚙', '/settings'],
     ]);
-    expect(links[4].getAttribute('aria-label')).toBe('Settings');
+    expect(links[5].getAttribute('aria-label')).toBe('Settings');
   });
 
   it('offers sign-out only when sign-in is enabled', async () => {

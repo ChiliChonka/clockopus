@@ -3,8 +3,8 @@ name: clockopus
 description: A fast personal time tracker for people who switch context all day
 type: application
 # Chart and app are released together from one tag (v<version>); keep both equal.
-version: 0.2.0
-appVersion: "0.2.0"
+version: 0.3.0
+appVersion: "0.3.0"
 home: https://github.com/ChiliChonka/clockopus
 sources:
   - https://github.com/ChiliChonka/clockopus

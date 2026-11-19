@@ -214,6 +214,31 @@ async fn corrections_history_and_settings_round_trip(backend: &Backend) {
     assert_eq!(theirs.settings.forgotten_after_hours, 8);
     assert_eq!(theirs.settings.week_start, WeekStart::Sunday);
     assert_eq!(theirs.settings.csv_rounding, 15);
+    assert_eq!(t.notes, None);
+
+    // A change of only the notes is written too (PostgreSQL writes only changed rows).
+    let id = t.id;
+    for (text, at) in [
+        ("Agenda\n  - budget", "2026-11-16T13:00:00Z"),
+        ("Agenda\n  - budget\n  - über", "2026-11-16T14:00:00Z"),
+    ] {
+        store
+            .write(&u, |d| {
+                d.update_task(
+                    id,
+                    TaskPatch {
+                        notes: Some(text.into()),
+                        ..Default::default()
+                    },
+                    ts(at),
+                )
+            })
+            .await
+            .unwrap();
+        let fresh = backend.open().await.read(&u, Clone::clone).await.unwrap();
+        assert_eq!(fresh.tasks[0].notes.as_deref(), Some(text));
+        assert_eq!(fresh.tasks[0].notes_changed_at, Some(ts(at)));
+    }
 }
 
 async fn deleting_and_reading_unknown_users(backend: &Backend) {

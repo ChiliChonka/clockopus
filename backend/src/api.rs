@@ -19,6 +19,7 @@ use crate::domain::{
     ChangeReason, DomainError, NewTask, Running, StatusFilter, TagView, TaskPatch, TaskStatus,
     TaskView, UserData, WeekStart,
 };
+use crate::notes::NoteView;
 use crate::reports::Report;
 use crate::store::yaml::{export_yaml, import_yaml};
 
@@ -105,6 +106,8 @@ pub struct UpdateTask {
     tags: Option<Vec<String>>,
     /// An empty string removes the link.
     link: Option<String>,
+    /// Several lines; an empty string removes the notes.
+    notes: Option<String>,
     pinned: Option<bool>,
     status: Option<TaskStatus>,
 }
@@ -126,6 +129,7 @@ pub async fn update_task(
                     title: input.title,
                     tags: input.tags,
                     link: input.link,
+                    notes: input.notes,
                     pinned: input.pinned,
                     status: input.status,
                 },
@@ -465,6 +469,42 @@ pub async fn get_report(
         .read(&user.key, |d| d.report(q.from, q.to, now))
         .await??;
     Ok(Json(report))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NotesQuery {
+    /// One tag; missing or empty: all tags.
+    #[serde(default)]
+    tag: Option<String>,
+    /// Local days `from..=to`; both missing: all time.
+    #[serde(default)]
+    from: Option<Date>,
+    #[serde(default)]
+    to: Option<Date>,
+}
+
+/// Tasks with notes for the notes view, newest activity first.
+pub async fn list_notes(
+    State(state): State<AppState>,
+    user: User,
+    Query(q): Query<NotesQuery>,
+) -> Result<Json<Vec<NoteView>>, ApiError> {
+    let period = match (q.from, q.to) {
+        (Some(from), Some(to)) => Some((from, to)),
+        (None, None) => None,
+        _ => {
+            return Err(ApiError::Invalid {
+                code: "range_invalid",
+                message: "Give both `from` and `to`, or neither for all time.".into(),
+            });
+        }
+    };
+    let now = Timestamp::now();
+    let notes = state
+        .store
+        .read(&user.key, |d| d.notes(q.tag.as_deref(), period, now))
+        .await??;
+    Ok(Json(notes))
 }
 
 #[derive(Debug, Deserialize)]
@@ -1122,5 +1162,80 @@ tasks:
         assert_eq!(tasks, "[]", "memory gone");
         let (_, tags) = call(&t.app, "GET", "/api/v1/tags", None).await;
         assert_eq!(tags, "[]");
+    }
+
+    /// What the edit dialog sends on “Save task” (frontend/src/app/core/wire.spec.ts).
+    const SAVE_WITH_NOTES: &str =
+        r#"{"title":"Planning","tags":["team-a"],"link":"","notes":"Agenda\n  - budget"}"#;
+
+    #[tokio::test]
+    async fn notes_are_saved_with_the_task_and_listed_by_tag() {
+        let t = test_app(AuthMode::None);
+        let app = &t.app;
+        let (_, body) = call(app, "POST", "/api/v1/tasks", Some(CREATE_ONLY)).await;
+        let id = json(&body)["id"].as_str().unwrap().to_owned();
+        assert!(json(&body)["notes"].is_null());
+
+        let (status, body) = call(
+            app,
+            "PATCH",
+            &format!("/api/v1/tasks/{id}"),
+            Some(SAVE_WITH_NOTES),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let task = json(&body);
+        assert_eq!(task["notes"], "Agenda\n  - budget");
+        assert!(task["notes_changed_at"].is_string(), "{task}");
+
+        // Another task with the tag but without notes stays out.
+        call(app, "POST", "/api/v1/tasks", Some(CREATE_AND_START)).await;
+
+        let today = jiff::Timestamp::now()
+            .to_zoned_datetime(jiff::tz::TimeZone::UTC)
+            .date();
+        for query in [
+            "tag=team-a".to_owned(),
+            format!("tag=%23Team-A&from={today}&to={today}"),
+            String::new(),
+        ] {
+            let (status, body) = call(app, "GET", &format!("/api/v1/notes?{query}"), None).await;
+            assert_eq!(status, StatusCode::OK, "{query}: {body}");
+            let list = json(&body);
+            assert_eq!(list.as_array().unwrap().len(), 1, "{query}: {list}");
+            assert_eq!(list[0]["id"], id.as_str());
+            assert_eq!(list[0]["notes"], "Agenda\n  - budget");
+            assert_eq!(list[0]["period_seconds"], 0);
+        }
+        let (_, body) = call(app, "GET", "/api/v1/notes?tag=review", None).await;
+        assert_eq!(body, "[]");
+
+        // Only one end of a period, or a reversed one: 400.
+        for query in [
+            format!("from={today}"),
+            format!("from={today}&to=2000-01-01"),
+        ] {
+            let (status, body) = call(app, "GET", &format!("/api/v1/notes?{query}"), None).await;
+            assert_eq!(status, StatusCode::BAD_REQUEST, "{query}: {body}");
+            assert_eq!(json(&body)["error"], "range_invalid");
+        }
+
+        // In the YAML file the notes are readable as they were written.
+        let file = std::fs::read_to_string(t.data.path().join("local/tasks.yaml")).unwrap();
+        assert!(!file.contains("\\n"), "no escaped line breaks: {file}");
+        assert!(file.lines().any(|l| l.trim() == "Agenda"), "{file}");
+        assert!(file.lines().any(|l| l.trim() == "- budget"), "{file}");
+
+        // An empty string removes them.
+        let (_, body) = call(
+            app,
+            "PATCH",
+            &format!("/api/v1/tasks/{id}"),
+            Some(r#"{"notes":""}"#),
+        )
+        .await;
+        assert!(json(&body)["notes"].is_null(), "{body}");
+        let (_, body) = call(app, "GET", "/api/v1/notes", None).await;
+        assert_eq!(body, "[]");
     }
 }

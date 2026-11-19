@@ -244,9 +244,10 @@ async fn load(conn: &mut PgConnection, user: &str) -> anyhow::Result<UserData> {
     }
 
     let tasks = sqlx::query(
-        "SELECT id, title, tags, link, status, pinned,
+        "SELECT id, title, tags, link, notes, status, pinned,
                 extract(epoch FROM created_at)::bigint AS created_s,
-                extract(epoch FROM last_used_at)::bigint AS used_s
+                extract(epoch FROM last_used_at)::bigint AS used_s,
+                extract(epoch FROM notes_changed_at)::bigint AS notes_s
          FROM tasks WHERE user_key = $1 ORDER BY created_at, id",
     )
     .bind(user)
@@ -260,6 +261,8 @@ async fn load(conn: &mut PgConnection, user: &str) -> anyhow::Result<UserData> {
             title: r.get("title"),
             tags: r.get("tags"),
             link: r.get("link"),
+            notes: r.get("notes"),
+            notes_changed_at: r.get::<Option<i64>, _>("notes_s").map(ts).transpose()?,
             status: match r.get::<String, _>("status").as_str() {
                 "done" => TaskStatus::Done,
                 _ => TaskStatus::Active,
@@ -366,6 +369,8 @@ async fn persist(
             o.title == task.title
                 && o.tags == task.tags
                 && o.link == task.link
+                && o.notes == task.notes
+                && o.notes_changed_at == task.notes_changed_at
                 && o.status == task.status
                 && o.pinned == task.pinned
                 && o.created_at == task.created_at
@@ -376,11 +381,14 @@ async fn persist(
         }
         // The WHERE keeps another user's row untouched if an id collides (e.g. an import).
         let affected = sqlx::query(
-            "INSERT INTO tasks (id, user_key, title, tags, link, status, pinned, created_at, last_used_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, to_timestamp($8), to_timestamp($9))
+            "INSERT INTO tasks (id, user_key, title, tags, link, status, pinned, created_at,
+                                last_used_at, notes, notes_changed_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, to_timestamp($8), to_timestamp($9), $10,
+                     to_timestamp($11))
              ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, tags = EXCLUDED.tags,
                  link = EXCLUDED.link, status = EXCLUDED.status, pinned = EXCLUDED.pinned,
-                 created_at = EXCLUDED.created_at, last_used_at = EXCLUDED.last_used_at
+                 created_at = EXCLUDED.created_at, last_used_at = EXCLUDED.last_used_at,
+                 notes = EXCLUDED.notes, notes_changed_at = EXCLUDED.notes_changed_at
              WHERE tasks.user_key = EXCLUDED.user_key",
         )
         .bind(task.id)
@@ -392,6 +400,8 @@ async fn persist(
         .bind(task.pinned)
         .bind(task.created_at.as_second())
         .bind(task.last_used_at.map(|t| t.as_second()))
+        .bind(&task.notes)
+        .bind(task.notes_changed_at.map(|t| t.as_second()))
         .execute(&mut *conn)
         .await?
         .rows_affected();
