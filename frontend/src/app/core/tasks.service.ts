@@ -5,6 +5,7 @@ import { parseQuickAdd } from './quick-add';
 import {
   ApiErrorBody,
   EntryView,
+  NoteView,
   TagView,
   TaskView,
   TimerView,
@@ -140,6 +141,17 @@ export class TasksService {
 
   deleteEntry(id: string): Promise<boolean> {
     return this.run(() => firstValueFrom(this.http.delete<void>(`/api/v1/entries/${id}`)));
+  }
+
+  /** Tasks with notes; `tag` null: all tags, `period` null: all time (local days). */
+  notes(tag: string | null, period: [string, string] | null): Promise<NoteView[]> {
+    const params: Record<string, string> = {};
+    if (tag) params['tag'] = tag;
+    if (period) {
+      params['from'] = period[0];
+      params['to'] = period[1];
+    }
+    return firstValueFrom(this.http.get<NoteView[]>('/api/v1/notes', { params }));
   }
 
   clearError(): void {

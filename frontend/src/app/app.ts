@@ -23,6 +23,7 @@ import { SessionService } from './core/session.service';
         <a routerLink="/day" routerLinkActive="active" ariaCurrentWhenActive="page">Day</a>
         <a routerLink="/week" routerLinkActive="active" ariaCurrentWhenActive="page">Week</a>
         <a routerLink="/month" routerLinkActive="active" ariaCurrentWhenActive="page">Month</a>
+        <a routerLink="/notes" routerLinkActive="active" ariaCurrentWhenActive="page">Notes</a>
         <a
           routerLink="/settings"
           routerLinkActive="active"

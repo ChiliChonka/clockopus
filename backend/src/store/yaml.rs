@@ -144,6 +144,11 @@ struct TaskDto {
     tags: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     link: Option<String>,
+    /// Several lines; missing in files from before 0.3.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    notes: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    notes_changed_at: Option<String>,
     status: TaskStatus,
     #[serde(default)]
     pinned: bool,
@@ -306,6 +311,8 @@ fn to_files(data: &UserData) -> (TasksFile, TagsFile, SettingsFile) {
             title: t.title.clone(),
             tags: t.tags.clone(),
             link: t.link.clone(),
+            notes: t.notes.clone(),
+            notes_changed_at: t.notes_changed_at.map(|ts| local(ts, &tz)),
             status: t.status,
             pinned: t.pinned,
             created_at: local(t.created_at, &tz),
@@ -385,6 +392,8 @@ fn from_files(
                 title: t.title,
                 tags: t.tags,
                 link: t.link,
+                notes: t.notes,
+                notes_changed_at: t.notes_changed_at.as_deref().map(parse_ts).transpose()?,
                 status: t.status,
                 pinned: t.pinned,
                 created_at: parse_ts(&t.created_at)?,

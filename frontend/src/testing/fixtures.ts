@@ -34,6 +34,8 @@ export function taskView(over: Partial<TaskView> = {}): TaskView {
     title: 'Fix login bug',
     tags: [],
     link: null,
+    notes: null,
+    notes_changed_at: null,
     status: 'active',
     pinned: false,
     created_at: '2026-11-17T08:00:00Z',

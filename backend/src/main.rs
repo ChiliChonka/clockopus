@@ -4,6 +4,7 @@ mod auth;
 mod config;
 mod corrections;
 mod domain;
+mod notes;
 mod reports;
 mod store;
 

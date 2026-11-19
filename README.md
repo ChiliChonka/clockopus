@@ -11,8 +11,8 @@
 > **Status:** in use. Releases with image and Helm chart:
 > [GitHub releases](https://github.com/ChiliChonka/clockopus/releases). Tasks and timer, quick add
 > with `#tags`, corrections with history, the forgotten-timer prompt, day/week/month reports with
-> highlighting, CSV and data export/import, YAML or PostgreSQL storage, sign-in with OpenID
-> Connect.
+> highlighting, notes per task with a notes view by tag, CSV and data export/import, YAML or
+> PostgreSQL storage, sign-in with OpenID Connect.
 > What is planned and in which order: [docs/SPEC.md](docs/SPEC.md), architecture:
 > [docs/adr/0001-architecture.md](docs/adr/0001-architecture.md).
 
@@ -41,12 +41,13 @@ clockopus is the opposite. It is a **personal** tool for your own time managemen
 
 | Area | What you get |
 |---|---|
-| Tasks | Cards sorted by last use, pin favourites, mark done (hidden from the board, kept in reports), optional link (e.g. a ticket) |
+| Tasks | Cards sorted by last use, pin favourites, mark done (hidden from the board, kept in reports), optional link (e.g. a ticket), notes over several lines (a 📝 on the card) |
 | Timer | Start/stop per card, exactly one running timer, running time in the browser tab title |
 | Manual times | Add, edit and delete time entries per task in 24-hour form (`930` → `09:30`); overlaps are rejected; every change keeps the previous value |
 | Forgotten timer | Detected the next day or after a configurable number of hours; correct it with one click |
 | Tags | Per user, always lower case, quick-access bar with your most used tags, auto-completion when creating tasks (`↑`/`↓`, `Tab`, `Enter`) |
 | Reports | Day timeline (drag to correct), week grid, month calendar; totals per task and time per tag as `1h30m`; click a task or tag to highlight its time, `Ctrl`/`⌘`+click for more |
+| Notes | A view of all notes of one tag in a period (last month by default, up to all time) |
 | Export | CSV per time range (optional rounding), full data export/import as YAML |
 | Sign-in | Any OpenID Connect provider; the first login creates the account, no approval needed |
 
@@ -60,8 +61,10 @@ an extra layer (tags do that), approvals, reminders by email, idle detection.
 | ![Board with task cards, quick-add field and frequent tags](docs/screenshots/board.png) | ![Day timeline with one task and one tag highlighted](docs/screenshots/day.png) |
 | **Week** (tag `#team-a` highlighted) | **Month** |
 | ![Week grid with a selected tag and a Selected row](docs/screenshots/week.png) | ![Month calendar with the time per day](docs/screenshots/month.png) |
-| **Edit a task** (times in 24-hour form) | **Dark mode** |
-| ![Edit dialog with time entries and Add time](docs/screenshots/edit-dialog.png) | ![Week grid in dark mode](docs/screenshots/week-dark.png) |
+| **Edit a task** (notes, times in 24-hour form) | **Notes** of one tag in the last month |
+| ![Edit dialog with notes, time entries and Add time](docs/screenshots/edit-dialog.png) | ![Notes view with a tag and a period chosen](docs/screenshots/notes.png) |
+| **Dark mode** | |
+| ![Week grid in dark mode](docs/screenshots/week-dark.png) | |
 
 ## How it runs
 

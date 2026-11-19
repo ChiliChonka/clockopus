@@ -4,7 +4,7 @@ Installs [clockopus](https://github.com/ChiliChonka/clockopus), a personal time 
 sign-in via OpenID Connect and PostgreSQL.
 
 ```sh
-helm install clockopus oci://ghcr.io/chilichonka/charts/clockopus --version 0.2.0 -f values.yaml
+helm install clockopus oci://ghcr.io/chilichonka/charts/clockopus --version 0.3.0 -f values.yaml
 ```
 
 ## Minimal values

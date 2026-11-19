@@ -84,6 +84,7 @@ pub fn router(config: Config, store: Store) -> Router {
         .route("/timer/keep-running", post(api::keep_running))
         .route("/tags", get(api::list_tags))
         .route("/reports", get(api::get_report))
+        .route("/notes", get(api::list_notes))
         .route("/export.csv", get(api::export_csv))
         .route("/export", get(api::export_data))
         .route("/import", post(api::import_data))

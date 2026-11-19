@@ -17,6 +17,17 @@ import { TaskView } from '../../core/wire';
         @if (task().pinned) {
           <span class="pin" title="Pinned" aria-label="Pinned">📌</span>
         }
+        @if (task().notes) {
+          <button
+            type="button"
+            class="notes"
+            title="Has notes, click to read or edit them"
+            aria-label="Has notes, edit"
+            (click)="edit.emit()"
+          >
+            📝
+          </button>
+        }
         @if (task().link; as link) {
           <a [href]="link" target="_blank" rel="noopener noreferrer" title="Open link">↗</a>
         }
@@ -90,6 +101,13 @@ import { TaskView } from '../../core/wire';
     header a {
       color: var(--accent);
       text-decoration: none;
+    }
+    .notes {
+      padding: 0 2px;
+      border: 0;
+      background: none;
+      line-height: 1.2;
+      cursor: pointer;
     }
     p {
       margin: 0;

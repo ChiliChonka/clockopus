@@ -24,7 +24,7 @@ export function parseTagInput(text: string): string[] {
     .filter((t, i, all) => t !== '' && all.indexOf(t) === i);
 }
 
-/** Edit dialog (docs/SPEC.md, 4.2): title, tags, link, entries, add time. */
+/** Edit dialog (docs/SPEC.md, 4.2): title, tags, link, notes, entries, add time. */
 @Component({
   selector: 'app-edit-task-dialog',
   imports: [EntryRow, TimeField],
@@ -59,6 +59,19 @@ export function parseTagInput(text: string): string[] {
               #l
             />
           </label>
+          <label class="notes">
+            Notes
+            <textarea
+              rows="6"
+              maxlength="20000"
+              [value]="notes()"
+              (input)="notes.set(n.value)"
+              (keydown.control.enter)="saveTask(task)"
+              (keydown.meta.enter)="saveTask(task)"
+              placeholder="Anything worth keeping about this task. Ctrl+Enter saves."
+              #n
+            ></textarea>
+          </label>
           <button type="submit" class="primary">Save task</button>
         </form>
 
@@ -74,7 +87,7 @@ export function parseTagInput(text: string): string[] {
           <span class="field">From <app-time-field label="From" [(value)]="addFrom" /></span>
           <span class="field">To <app-time-field label="To" [(value)]="addTo" /></span>
           <label class="grow">
-            Note <input type="text" [value]="addNote()" (input)="addNote.set(n.value)" #n />
+            Note <input type="text" [value]="addNote()" (input)="addNote.set(an.value)" #an />
           </label>
           <button type="submit">Add</button>
         </form>
@@ -139,7 +152,17 @@ export function parseTagInput(text: string): string[] {
     .grow {
       flex: 1 1 12rem;
     }
-    input {
+    .task label.notes {
+      flex-basis: 100%;
+    }
+    textarea {
+      resize: vertical;
+      min-height: 6rem;
+      font: inherit;
+      line-height: 1.4;
+    }
+    input,
+    textarea {
       border: 1px solid var(--border);
       border-radius: 8px;
       background: var(--surface);
@@ -166,6 +189,7 @@ export class EditTaskDialog {
   readonly title = linkedSignal(() => this.task()?.title ?? '');
   readonly tags = linkedSignal(() => (this.task()?.tags ?? []).join(' '));
   readonly link = linkedSignal(() => this.task()?.link ?? '');
+  readonly notes = linkedSignal(() => this.task()?.notes ?? '');
   readonly entries = signal<EntryView[]>([]);
 
   readonly addDate = signal(localDate(new Date()));
@@ -201,6 +225,8 @@ export class EditTaskDialog {
       title: this.title(),
       tags: parseTagInput(this.tags()),
       link: this.link().trim(),
+      // Sent every time; the server moves the “changed” date only when the text changed.
+      notes: this.notes(),
     });
   }
 

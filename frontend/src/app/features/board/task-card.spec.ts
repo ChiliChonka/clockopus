@@ -90,6 +90,20 @@ describe('TaskCard', () => {
     expect(el.querySelector('article')?.classList).toContain('is-done');
   });
 
+  it('shows only a marker for notes, never their text, and the marker opens the dialog', async () => {
+    let el = await render(taskView());
+    expect(el.querySelector('button.notes')).toBeNull();
+
+    el = await render(taskView({ notes: 'Secret agenda\n  - budget' }));
+    const marker = el.querySelector<HTMLButtonElement>('button.notes')!;
+    expect(marker.getAttribute('aria-label')).toBe('Has notes, edit');
+    expect(el.textContent).not.toContain('Secret agenda');
+    const edit = vi.fn();
+    fixture.componentInstance.edit.subscribe(edit);
+    marker.click();
+    expect(edit).toHaveBeenCalledTimes(1);
+  });
+
   it('emits edit', async () => {
     const el = await render(taskView());
     const edit = vi.fn();

@@ -1,4 +1,4 @@
-//! Reports, CSV export and checks for imported data (docs/SPEC.md, sections 4.3, 5 and 4.4).
+//! Reports, CSV export and checks for imported data (docs/SPEC.md, sections 4.3, 5 and 4.6).
 //! Pure functions on [`UserData`]; days are local days in the user's time zone.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -11,8 +11,8 @@ use uuid::Uuid;
 
 use crate::corrections::MAX_RANGE_DAYS;
 use crate::domain::{
-    CSV_ROUNDINGS, DomainError, Entry, UserData, WeekStart, invalid, normalize_tags,
-    normalize_title,
+    CSV_ROUNDINGS, DomainError, Entry, UserData, WeekStart, invalid, normalize_notes,
+    normalize_tags, normalize_title,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -64,13 +64,13 @@ struct Segment<'a> {
     entry: &'a Entry,
 }
 
-fn day_start(date: Date, tz: &TimeZone) -> Result<Timestamp, DomainError> {
+pub(crate) fn day_start(date: Date, tz: &TimeZone) -> Result<Timestamp, DomainError> {
     date.to_zoned_datetime(tz.clone())
         .map(|z| z.timestamp())
         .map_err(|_| invalid("range_invalid", "Date out of range."))
 }
 
-fn next_day(date: Date) -> Result<Date, DomainError> {
+pub(crate) fn next_day(date: Date) -> Result<Date, DomainError> {
     date.tomorrow()
         .map_err(|_| invalid("range_invalid", "Date out of range."))
 }
@@ -279,6 +279,7 @@ impl UserData {
         for task in &self.tasks {
             normalize_title(&task.title)?;
             normalize_tags(&task.tags)?;
+            normalize_notes(task.notes.as_deref())?;
             if !ids.insert(task.id) {
                 return Err(invalid(
                     "import_invalid",

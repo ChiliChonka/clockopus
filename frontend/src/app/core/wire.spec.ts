@@ -26,6 +26,19 @@ describe('wire format', () => {
     expect(JSON.stringify(toUpdateTaskWire({}))).toBe('{}');
   });
 
+  // backend/src/api.rs: SAVE_WITH_NOTES, what the edit dialog sends on “Save task”.
+  it('saves a task with notes over several lines', () => {
+    const body = toUpdateTaskWire({
+      title: 'Planning',
+      tags: ['team-a'],
+      link: '',
+      notes: 'Agenda\n  - budget',
+    });
+    expect(JSON.stringify(body)).toBe(
+      String.raw`{"title":"Planning","tags":["team-a"],"link":"","notes":"Agenda\n  - budget"}`,
+    );
+  });
+
   // backend/src/api.rs: ADD_ENTRY, MOVE_END and the forgotten-timer stop.
   it('adds a manual entry', () => {
     const body = toAddEntryWire(
