@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
       - run: pip install pyyaml
       - run: helm lint charts/clockopus -f charts/clockopus/ci/test-values.yaml
       - run: python3 charts/clockopus/tests/test_chart.py
