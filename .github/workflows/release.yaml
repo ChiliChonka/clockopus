@@ -36,7 +36,7 @@ jobs:
           echo "image=ghcr.io/${owner}/clockopus" >> "$GITHUB_OUTPUT"
           echo "charts=oci://ghcr.io/${owner}/charts" >> "$GITHUB_OUTPUT"
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
       - name: Chart checks
         run: |
           pip install pyyaml
