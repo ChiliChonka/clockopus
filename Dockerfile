@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # --- Frontend: Angular production build ---
-FROM node:24.21.0-trixie-slim AS frontend
+FROM node:26.13.0-trixie-slim AS frontend
 WORKDIR /src
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
