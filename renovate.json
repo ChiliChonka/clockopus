@@ -1,0 +1,19 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "local>ChiliChonka/helm-values//renovate/default"],
+  "packageRules": [
+    {
+      "description": "Below 1.0 a minor bump may break the API (SemVer). Keep such updates out of any group, one pull request each.",
+      "matchCurrentVersion": "/^[~^=]?0\\./",
+      "matchUpdateTypes": ["minor"],
+      "groupName": null,
+      "labels": ["renovate", "breaking-possible"]
+    },
+    {
+      "description": "TypeScript follows Angular (Angular 22 requires typescript >=6.0 <6.1). Majors come with the Angular update, not on their own.",
+      "matchPackageNames": ["typescript"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    }
+  ]
+}
